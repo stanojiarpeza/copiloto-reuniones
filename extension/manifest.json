@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "Copiloto de Reuniones - Subtítulos con nombres",
+  "version": "1.2.0",
+  "description": "Lee los subtítulos de Meet, Zoom web y Teams web (quién habla y qué dice) y se los pasa al Copiloto de Reuniones.",
+  "icons": {
+    "16": "icon-16.png",
+    "32": "icon-32.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  },
+  "action": {
+    "default_title": "Copiloto de Reuniones",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon-16.png",
+      "32": "icon-32.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "https://meet.google.com/*",
+    "https://*.zoom.us/*",
+    "https://teams.microsoft.com/*",
+    "https://teams.live.com/*",
+    "https://teams.cloud.microsoft/*",
+    "https://copiloto.example.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://meet.google.com/*",
+        "https://*.zoom.us/*",
+        "https://teams.microsoft.com/*",
+        "https://teams.live.com/*",
+        "https://teams.cloud.microsoft/*"
+      ],
+      "js": [
+        "reuniones.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://copiloto.example.com/*"
+      ],
+      "js": [
+        "puente.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

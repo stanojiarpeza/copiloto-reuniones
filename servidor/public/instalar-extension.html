@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instalar la extensión del Copiloto</title>
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>
+  :root { --bg: #f2f5f6; --panel: #fff; --line: #d5dde1; --fg: #14202a; --muted: #5a6b76; --acento: #0f766e; --on: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0e1316; --panel: #161d22; --line: #26323a; --fg: #e8eef1; --muted: #8c9ba5; --acento: #5eead4; --on: #07201c; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding: 24px 16px 48px; }
+  main { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 6px; text-wrap: balance; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  li { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; grid-template-columns: 40px 1fr; gap: 12px; }
+  .n { width: 32px; height: 32px; border-radius: 50%; background: var(--acento); color: var(--on); display: grid; place-items: center; font-weight: 700; }
+  li > div > b:first-child { display: block; margin-bottom: 4px; }
+  li p { margin: 0; color: var(--muted); }
+  .boton { display: inline-block; margin-top: 10px; background: var(--acento); color: var(--on); text-decoration: none; border: 0; border-radius: 10px; padding: 10px 18px; font: inherit; font-weight: 600; cursor: pointer; }
+  code { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; font-size: .95em; }
+  .nota { margin-top: 20px; color: var(--muted); font-size: .92rem; }
+  .ok { color: var(--acento); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Instala la extensión del Copiloto (2 minutos)</h1>
+  <p class="sub">Sirve para que el copiloto sepa <b>quién habla</b> en Meet, Zoom o Teams (en el navegador). Es opcional: sin ella, la app igual funciona con el audio y el micrófono.</p>
+  <ol>
+    <li><span class="n">1</span><div><b>Descarga la extensión</b><p>Se baja un archivo .zip.</p>
+      <a class="boton" href="extension/copiloto-extension.zip" download>Descargar la extensión</a></div></li>
+    <li><span class="n">2</span><div><b>Descomprímela en una carpeta que no vayas a borrar</b><p>Clic derecho sobre el archivo → <b>Extraer todo…</b> → elige, por ejemplo, <code>Documentos\Copiloto-extension</code>. Chrome la usa desde esa carpeta: si la borras, la extensión deja de funcionar.</p></div></li>
+    <li><span class="n">3</span><div><b>Abre la página de extensiones de Chrome</b><p>Copia esta dirección y pégala en la barra de Chrome (en Edge es <code>edge://extensions</code>):</p>
+      <p style="margin-top:8px"><code id="dir">chrome://extensions</code> <button class="boton" id="copiar" type="button" style="margin:0 0 0 6px;padding:6px 12px">Copiar</button></p></div></li>
+    <li><span class="n">4</span><div><b>Activa el «Modo de desarrollador»</b><p>Es un interruptor arriba a la derecha de esa página (en Edge, abajo a la izquierda).</p></div></li>
+    <li><span class="n">5</span><div><b>Toca «Cargar descomprimida»</b><p>Elige la carpeta del paso 2 (la que tiene el archivo <code>manifest.json</code> adentro).</p></div></li>
+    <li><span class="n">6</span><div><b>Vuelve a la app y recárgala</b><p>Debe decir <span class="ok">«Extensión instalada»</span>. En la reunión, activa los subtítulos (CC) y toca <b>Empezar</b>.</p></div></li>
+  </ol>
+  <p class="nota">Chrome puede mostrar un aviso sobre extensiones en modo de desarrollador: es normal porque esta extensión todavía no está en la tienda de Chrome. Solo lee los subtítulos de tus reuniones y se los pasa a tu app del Copiloto.</p>
+</main>
+<script>
+  document.getElementById('copiar').addEventListener('click', function () {
+    var b = this;
+    navigator.clipboard.writeText('chrome://extensions').then(function () { b.textContent = '¡Copiado!'; }, function () { b.textContent = 'Cópiala a mano'; });
+    setTimeout(function () { b.textContent = 'Copiar'; }, 1800);
+  });
+</script>
+</body>
+</html>

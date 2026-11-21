@@ -1,0 +1,2649 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Copiloto de Reuniones</title>
+<!-- App instalable (escritorio y celular) -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0e1316">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Copiloto">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- Inicio de sesion con Google: cada usuario guarda su historial en SU propio Google Sheets -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  /* Concepto: cabina de control para una reunion en vivo. Lo urgente (el consejo) arriba y grande;
+     lo que se configura, plegado abajo. Oscuro por defecto para no distraer en pantalla compartida. */
+  :root {
+    --bg: #0e1316;
+    --panel: #161d22;
+    --line: #26323a;
+    --fg: #e8eef1;
+    --muted: #8c9ba5;
+    --cliente: #5eead4;
+    --yo: #f5b84b;
+    --alerta: #ff7a59;
+    --on-accent: #07201c;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f2f5f6; --panel: #ffffff; --line: #d5dde1; --fg: #14202a; --muted: #5a6b76;
+      --cliente: #0f766e; --yo: #a16207; --alerta: #c2410c; --on-accent: #ffffff;
+      color-scheme: light;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f2f5f6; --panel: #ffffff; --line: #d5dde1; --fg: #14202a; --muted: #5a6b76;
+    --cliente: #0f766e; --yo: #a16207; --alerta: #c2410c; --on-accent: #ffffff;
+    color-scheme: light;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding-block: 16px 40px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .app { max-width: 1080px; margin: 0 auto; display: grid; gap: 16px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 1.15rem; margin: 0; letter-spacing: .01em; text-wrap: balance; }
+  .pill {
+    font: 600 .8rem/1 ui-monospace, "SF Mono", Consolas, monospace; letter-spacing: .06em; text-transform: uppercase;
+    padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--panel);
+  }
+  .pill.on { color: var(--cliente); border-color: var(--cliente); }
+  .pill.err { color: var(--alerta); border-color: var(--alerta); }
+
+  .layout { display: grid; gap: 16px; grid-template-columns: 1fr; }
+  @media (min-width: 880px) {
+    .layout { grid-template-columns: minmax(280px, 380px) minmax(0, 1fr); align-items: start; }
+  }
+  .col { display: grid; gap: 16px; min-width: 0; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+  .label {
+    font: 600 .72rem/1 ui-monospace, "SF Mono", Consolas, monospace; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 10px;
+  }
+
+  button {
+    font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 8px;
+    min-height: 44px; padding: 8px 14px; cursor: pointer;
+  }
+  button:hover { border-color: var(--muted); }
+  button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--cliente); outline-offset: 2px; }
+  button[disabled] { opacity: .5; cursor: not-allowed; }
+
+  .mic {
+    width: 100%; min-height: 64px; font-size: 1.1rem; font-weight: 700;
+    background: var(--cliente); color: var(--on-accent); border-color: var(--cliente);
+  }
+  .mic.live { background: transparent; color: var(--cliente); }
+  .mic.live::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--cliente); margin-right: 10px; animation: pulso 1.4s ease-in-out infinite; }
+  .mic.secundario { min-height: 48px; font-size: 1rem; background: transparent; color: var(--fg); border-color: var(--line); margin-top: 12px; }
+  .mic.secundario.live { color: var(--yo); border-color: var(--yo); }
+  .mic.secundario.live::before { background: var(--yo); }
+  .mic.conectado { background: transparent; color: var(--cliente); }
+  .mic.conectado::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--cliente); margin-right: 10px; animation: pulso 1.4s ease-in-out infinite; }
+  @keyframes pulso { 50% { opacity: .25; } }
+  @media (prefers-reduced-motion: reduce) { .mic.live::before, .mic.conectado::before { animation: none; } }
+
+  .quien { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .quien button { font-weight: 600; }
+  .quien button[aria-pressed="true"].c { background: var(--cliente); border-color: var(--cliente); color: var(--on-accent); }
+  .quien button[aria-pressed="true"].y { background: var(--yo); border-color: var(--yo); color: var(--on-accent); }
+  .hint { color: var(--muted); font-size: .85rem; margin: 10px 0 0; }
+
+  /* Consejo */
+  .consejo { border-color: var(--cliente); min-height: 220px; }
+  .consejo.alerta { border-color: var(--alerta); }
+  .consejo .vacio { color: var(--muted); margin: 0; max-width: 52ch; }
+  .fila { display: grid; gap: 2px; margin: 0 0 14px; }
+  .fila:last-child { margin-bottom: 0; }
+  .fila .k { font: 600 .72rem/1.2 ui-monospace, "SF Mono", Consolas, monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .fila .v { overflow-wrap: anywhere; }
+  .fila.decir .k { color: var(--cliente); }
+  .fila.decir .v { font-size: 1.45rem; line-height: 1.3; font-weight: 600; text-wrap: balance; }
+  .fila.alerta .k { color: var(--alerta); }
+  .fila.alerta .v { color: var(--alerta); font-weight: 700; }
+  .fila.nota .v { color: var(--fg); }
+  .fila.traduccion .k { color: var(--yo); }
+  .ajustes textarea { width: 100%; box-sizing: border-box; font: inherit; }
+  .recs .cal { margin-left: 8px; font-size: .85em; white-space: nowrap; }
+  .recs .cal a { color: var(--cliente); margin-right: 6px; }
+  .fila.traduccion .v { font-style: italic; }
+  .turno .trad { display: block; margin-top: 2px; color: var(--muted); font-style: italic; font-size: .92em; }
+  .parrafo { margin: 0 0 8px; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .detalle { margin-top: 4px; color: var(--muted); }
+  .detalle > summary { font-size: .8rem; font-weight: 600; min-height: 28px; color: var(--muted); }
+  .detalle[open] > summary { margin-bottom: 8px; }
+  .detalle .fila .v { color: var(--muted); }
+  .meta { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: .8rem; margin-top: 12px; }
+
+  /* Transcripcion */
+  .turnos { display: grid; gap: 8px; max-height: 280px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+  .turno { display: grid; grid-template-columns: 74px 1fr; gap: 8px; align-items: baseline; }
+  .turno .quien-t { font: 700 .72rem/1.4 ui-monospace, "SF Mono", Consolas, monospace; letter-spacing: .08em; }
+  .turno.CLIENTE .quien-t { color: var(--cliente); }
+  .turno.YO .quien-t { color: var(--yo); }
+  .turno .quien-t { overflow-wrap: anywhere; }
+  .turnos .turno { grid-template-columns: minmax(74px, 112px) 1fr; }
+  .personas { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
+  .personas button { min-height: 32px; padding: 4px 10px; font-size: .85rem; border-radius: 999px; }
+  .personas button[aria-pressed="true"] { background: var(--yo); border-color: var(--yo); color: var(--on-accent); font-weight: 700; }
+  .turno .txt { overflow-wrap: anywhere; }
+  .interino { color: var(--muted); font-style: italic; min-height: 1.5em; margin: 10px 0 0; overflow-wrap: anywhere; }
+
+  .comandos { display: flex; flex-wrap: wrap; gap: 8px; }
+  .manual { display: flex; gap: 8px; margin-top: 12px; }
+  .manual input { flex: 1; min-width: 0; }
+  input, select, textarea {
+    font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    min-height: 44px; padding: 8px 12px; width: 100%;
+  }
+  .manual input { width: auto; }
+  details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
+  .ajustes { display: grid; gap: 12px; margin-top: 12px; }
+  .ajustes label { display: grid; gap: 4px; font-size: .85rem; color: var(--muted); }
+  .recs { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+  .recs li { overflow-wrap: anywhere; }
+  .contador { font: 600 .8rem/1 ui-monospace, "SF Mono", Consolas, monospace; color: var(--muted); margin: 8px 0 0; }
+  .contador b { color: var(--cliente); }
+
+  /* Historial: cada analisis queda registrado, el mas nuevo arriba */
+  .hist-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .historial { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; max-height: 70vh; overflow: auto; }
+  .tarjeta { border: 1px solid var(--line); border-left: 3px solid var(--cliente); border-radius: 8px; padding: 12px; display: grid; gap: 8px; }
+  .tarjeta.alerta { border-left-color: var(--alerta); }
+  .tarjeta.espera { border-left-color: var(--muted); }
+  .tarjeta.sin { border-left-color: var(--line); opacity: .75; }
+  .tarjeta .cab { display: flex; flex-wrap: wrap; gap: 6px 12px; font: 600 .72rem/1.3 ui-monospace, "SF Mono", Consolas, monospace; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .tarjeta .cab .n { color: var(--fg); }
+  .tarjeta .oido { margin: 0; color: var(--muted); font-size: .9rem; overflow-wrap: anywhere; }
+  .tarjeta .resp .fila.decir .v { font-size: 1.05rem; }
+  .tarjeta .resp .fila { margin-bottom: 8px; }
+  .aviso-google { border-color: var(--yo); }
+  .aviso-google p { margin: 0 0 10px; }
+  .aviso-google .acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+  #btnGoogle { min-height: 34px; padding: 4px 12px; font-size: .85rem; }
+  #btnGoogle.ok { border-color: var(--cliente); color: var(--cliente); }
+  .google-estado a { color: var(--cliente); }
+  .franja-google { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 12px;
+    padding: 6px 12px; border: 1px solid var(--yo); border-radius: 8px; font-size: .85rem; color: var(--yo); }
+  .franja-google[hidden], .aviso-google[hidden] { display: none; }
+  .franja-google button { min-height: 30px; padding: 2px 12px; font-size: .85rem; border-color: var(--yo); color: var(--yo); }
+  .separador { text-align: center; color: var(--muted); font: 600 .72rem/1.3 ui-monospace, "SF Mono", Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; padding: 6px 0; border-top: 1px dashed var(--line); }
+
+  /* ===== v17: accesos grandes, guia de inicio, preguntas a la IA y transcripcion ===== */
+  [hidden] { display: none !important; }
+  .titulo-app small { display: block; color: var(--muted); font-weight: 400; font-size: .8rem; letter-spacing: 0; }
+  .atajos { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  @media (max-width: 700px) { .atajos { grid-template-columns: 1fr; } }
+  .atajo {
+    display: flex; align-items: center; gap: 12px; text-align: left; min-height: 64px; padding: 12px 16px;
+    border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; width: 100%;
+  }
+  .atajo:hover { border-color: var(--cliente); }
+  .atajo[aria-expanded="true"] { border-color: var(--cliente); box-shadow: inset 0 0 0 1px var(--cliente); }
+  .atajo .ico { font-size: 1.7rem; line-height: 1; }
+  .atajo b { display: block; font-size: 1.02rem; }
+  .atajo small { display: block; color: var(--muted); font-size: .82rem; }
+  .aviso-guia { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-color: var(--yo); }
+  .aviso-guia p { margin: 0; }
+  .boton-grande { min-height: 48px; padding: 10px 20px; font-size: 1rem; font-weight: 600; border-radius: 10px;
+    background: var(--cliente); color: var(--on-accent); border: 1px solid var(--cliente); cursor: pointer; }
+  .boton-grande:hover { filter: brightness(1.05); border-color: var(--cliente); }
+  .boton-suave { min-height: 44px; padding: 8px 16px; border-radius: 10px; }
+  .cab-panel { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .cab-panel .label { margin: 0; }
+  .acciones-fila { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* Preguntale a tu IA */
+  .chat-ia { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 10px; max-height: max(520px, 72vh); overflow-y: auto; position: relative; }
+  .burbuja { padding: 10px 14px; border-radius: 12px; max-width: 92%; border: 1px solid var(--line); overflow-wrap: anywhere; }
+  .burbuja.yo { justify-self: end; background: color-mix(in srgb, var(--cliente) 14%, var(--panel)); border-color: color-mix(in srgb, var(--cliente) 40%, var(--line)); }
+  .burbuja.ia { justify-self: start; background: var(--bg); }
+  .burbuja.ia.error { border-color: var(--alerta); color: var(--alerta); }
+  .burbuja p { margin: 0 0 6px; } .burbuja p:last-child { margin-bottom: 0; }
+  .burbuja ul, .burbuja ol { margin: 4px 0 6px; padding-left: 20px; }
+  .burbuja .fuentes { margin-top: 8px; font-size: .82rem; color: var(--muted); }
+  .burbuja .fuentes a { color: var(--cliente); }
+  .burbuja .aviso-ia { margin-top: 8px; font-size: .82rem; color: var(--yo); }
+  .burbuja .aviso-ia.ok { color: var(--muted); }
+  .pensando { color: var(--muted); font-style: italic; }
+  .sugeridas { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; }
+  .sugeridas button { min-height: 34px; padding: 4px 12px; border-radius: 999px; font-size: .85rem; }
+  .form-pregunta { display: grid; gap: 8px; }
+  .form-pregunta textarea, .guia textarea { width: 100%; min-height: 64px; resize: vertical; font: inherit; box-sizing: border-box; }
+  .form-pregunta .fila { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .check { display: inline-flex; align-items: center; gap: 8px; color: var(--fg); font-size: .92rem; cursor: pointer; }
+  .check input { width: 18px; height: 18px; min-height: 0; padding: 0; }
+  .grafico { margin: 8px 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; max-width: 620px; }
+  .grafico svg { width: 100%; height: auto; display: block; }
+  .grafico .leyenda { display: flex; gap: 14px; flex-wrap: wrap; font-size: .8rem; color: var(--muted); padding: 4px 6px 0; }
+  .grafico .leyenda i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+  /* Transcripcion completa */
+  .tx-lista { list-style: none; margin: 0; padding: 0; max-height: 460px; overflow-y: auto; display: grid; gap: 6px; }
+  .tx-lista li { display: grid; grid-template-columns: 76px 64px minmax(0, 1fr); gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: .93rem; }
+  @media (max-width: 560px) { .tx-lista li { grid-template-columns: 1fr; gap: 2px; } }
+  .tx-h { white-space: nowrap; color: var(--muted); font: .78rem/1.6 ui-monospace, "SF Mono", Consolas, monospace; }
+  .tx-q { font-weight: 700; font-size: .82rem; }
+  .tx-q.cliente { color: var(--cliente); } .tx-q.yo { color: var(--yo); }
+  .tx-tr { color: var(--muted); font-size: .85rem; margin-top: 2px; }
+
+  /* Guia de inicio */
+  body.con-guia { overflow: hidden; }
+  .guia { position: fixed; inset: 0; z-index: 50; background: rgba(4, 10, 14, .72); display: grid; place-items: center; padding: 16px; overflow-y: auto; }
+  .guia[hidden] { display: none; }
+  .guia-caja { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 16px; width: min(560px, 100%); padding: 24px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+  .guia-puntos { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+  .guia-puntos span { flex: 1; height: 6px; border-radius: 99px; background: var(--line); }
+  .guia-puntos span.hecho { background: var(--cliente); }
+  .guia-puntos span.actual { background: var(--yo); }
+  .guia-num { color: var(--muted); font: 600 .78rem/1 ui-monospace, "SF Mono", Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 6px; }
+  .guia h2 { margin: 0 0 8px; font-size: 1.35rem; line-height: 1.25; text-wrap: balance; }
+  .guia p { margin: 0 0 12px; }
+  .guia .nota { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: .9rem; }
+  .guia .ok { color: var(--cliente); font-weight: 600; }
+  .guia .mal { color: var(--alerta); }
+  .guia label { display: grid; gap: 6px; margin: 10px 0; font-size: .92rem; }
+  .guia input, .guia textarea { width: 100%; }
+  .guia-pie { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  .guia-pie .der { display: flex; gap: 8px; margin-left: auto; }
+  .enlace-boton { background: none; border: none; color: var(--muted); text-decoration: underline; cursor: pointer; min-height: 0; padding: 4px; }
+  .opciones-ia { display: grid; gap: 8px; grid-template-columns: 1fr 1fr; margin: 6px 0 12px; }
+  @media (max-width: 480px) { .opciones-ia { grid-template-columns: 1fr; } }
+  .opcion-ia { display: grid; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; color: var(--fg); min-height: 0; }
+  .opcion-ia[aria-pressed="true"] { border-color: var(--cliente); box-shadow: inset 0 0 0 1px var(--cliente); }
+  .opcion-ia b { font-size: .98rem; } .opcion-ia small { color: var(--muted); }
+  .etiqueta-rec { display: inline-block; font-size: .7rem; font-weight: 700; color: var(--on-accent); background: var(--cliente); border-radius: 99px; padding: 1px 8px; margin-left: 6px; vertical-align: 1px; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 4px; }
+  .chips button { min-height: 38px; padding: 4px 14px; border-radius: 999px; }
+  .chips button[aria-pressed="true"] { background: var(--cliente); color: var(--on-accent); border-color: var(--cliente); }
+  .pasos-uso { margin: 0 0 12px; padding-left: 0; list-style: none; display: grid; gap: 10px; }
+  .pasos-uso li { display: grid; grid-template-columns: 40px 1fr; gap: 8px; align-items: start; }
+  .pasos-uso .n { font-size: 1.5rem; line-height: 1.2; }
+  .enlace { background: none; border: 0; padding: 0; min-height: 0; color: var(--yo); text-decoration: underline; cursor: pointer; font: inherit; letter-spacing: inherit; text-transform: inherit; }
+  .caja-groq { margin-top: 10px; border: 1px solid var(--yo); border-radius: 10px; padding: 12px; display: grid; gap: 8px; background: var(--panel); }
+  .caja-groq p { margin: 0; font-size: .9rem; line-height: 1.45; }
+  .caja-groq-titulo { font-weight: 700; }
+  .caja-groq-ir { justify-self: start; display: inline-flex; align-items: center; text-decoration: none; color: inherit; border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; font-weight: 600; }
+  .caja-groq-fila { display: flex; gap: 8px; flex-wrap: wrap; }
+  .caja-groq-fila input { flex: 1 1 200px; min-width: 0; }
+  .caja-groq-estado { color: var(--alerta); }
+  .caja-groq-estado:empty { display: none; }
+  .burbuja.ancha { width: min(92%, 680px); }
+  .tabla-ia { overflow-x: auto; margin: 6px 0; }
+  .tabla-ia table { border-collapse: collapse; font-size: .9rem; min-width: 60%; }
+  .tabla-ia th, .tabla-ia td { border-bottom: 1px solid var(--line); padding: 3px 10px; text-align: left; }
+  .tabla-ia table { font-size: .85rem; }
+  .datos-ia { margin: 4px 0; font-size: .85rem; }
+  .datos-ia summary { cursor: pointer; color: var(--muted); }
+  .tabla-ia th { font-weight: 700; }
+  .tabla-ia td:not(:first-child), .tabla-ia th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1 class="titulo-app">Copiloto de Reuniones<small>Te dice qué decir y qué preguntar mientras hablas</small></h1>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button id="btnGuia" type="button" title="Abrir la guía de inicio">❓ Guía</button>
+      <button id="btnGoogle" type="button" title="Tu historial se guarda en tu propio Google Sheets">Conectar Google</button>
+      <button id="btnInstalar" type="button" hidden>Instalar app</button>
+      <span id="estado" class="pill" role="status">Apagado</span>
+    </div>
+  </header>
+
+  <div id="franjaGoogle" class="franja-google" role="status" hidden>
+    <span id="franjaGoogleTxt"></span>
+    <button id="btnFranjaReconectar" type="button">Reconectar</button>
+  </div>
+
+  <nav class="atajos" aria-label="Accesos rápidos">
+    <button id="atHistorial" class="atajo" type="button"><span class="ico" aria-hidden="true">📄</span><span><b>Ver mi historial</b><small>Se abre tu Google Sheets</small></span></button>
+    <button id="atTranscripcion" class="atajo" type="button" aria-expanded="false" aria-controls="panelTx"><span class="ico" aria-hidden="true">📝</span><span><b>Transcripción completa</b><small>Todo lo que se habló, de inicio a fin</small></span></button>
+    <button id="atPreguntar" class="atajo" type="button" aria-expanded="false" aria-controls="panelIA"><span class="ico" aria-hidden="true">💬</span><span><b>Pregúntale a tu IA</b><small>Sobre la reunión o lo que sea</small></span></button>
+  </nav>
+
+  <section id="avisoGuia" class="panel aviso-guia" hidden>
+    <p id="avisoGuiaTxt"><b>Te falta poco para usar el copiloto.</b></p>
+    <button id="btnAvisoGuia" class="boton-grande" type="button">Continuar la configuración</button>
+  </section>
+
+  <section id="panelIA" class="panel" aria-label="Pregúntale a tu IA" hidden>
+    <div class="cab-panel">
+      <p class="label">💬 Pregúntale a tu IA</p>
+      <button id="pLimpiar" type="button" class="boton-suave">Borrar conversación</button>
+    </div>
+    <p class="hint" style="margin:0 0 10px">Tu IA ya conoce lo que se está hablando en la reunión. Puede buscar en internet y hacer gráficos.</p>
+    <ul id="pLista" class="chat-ia" aria-live="polite"></ul>
+    <div id="pSugeridas" class="sugeridas">
+      <button type="button">Resume lo que llevamos</button>
+      <button type="button">¿Qué le preocupa al cliente?</button>
+      <button type="button">¿Qué debería preguntar ahora?</button>
+      <button type="button">Busca precios de la competencia y hazme un gráfico</button>
+    </div>
+    <form id="pForm" class="form-pregunta">
+      <textarea id="pTexto" placeholder="Escribe tu pregunta… (Enter para enviar)" aria-label="Tu pregunta"></textarea>
+      <div class="fila">
+        <label class="check"><input id="pBuscar" type="checkbox" checked> Buscar en internet</label>
+        <button id="pEnviar" class="boton-grande" type="submit">Preguntar</button>
+      </div>
+    </form>
+  </section>
+
+  <section id="panelTx" class="panel" aria-label="Transcripción completa" hidden>
+    <div class="cab-panel">
+      <p class="label">📝 Transcripción completa · <span id="txTotal">0 líneas</span></p>
+      <div class="acciones-fila">
+        <button id="txCopiar" type="button" class="boton-suave">Copiar todo</button>
+        <button id="txDescargar" type="button" class="boton-suave">Descargar</button>
+        <button id="txSheets" type="button" class="boton-suave">Ver en mi Sheets</button>
+      </div>
+    </div>
+    <p class="hint" style="margin:0 0 10px">Todo lo que se dijo en esta reunión, de principio a fin. También se guarda en tu Google Sheets, en la pestaña «Transcripción».</p>
+    <ul id="txLista" class="tx-lista"></ul>
+  </section>
+
+  <div class="layout">
+    <div class="col">
+      <section id="avisoGoogle" class="panel aviso-google" aria-label="Historial en Google Sheets" hidden>
+        <p id="avisoGoogleTxt"><b>Para usar el copiloto, conecta tu cuenta de Google.</b> Es una sola vez: el copiloto crea una hoja en tu Drive y guarda ahí cada análisis. Nadie más la ve.</p>
+        <p class="hint" style="margin:0 0 10px">⚠️ En la ventana de Google, <b>marca la casilla de Google Drive</b>. Sin ese permiso no se puede crear tu hoja.</p>
+        <div class="acciones">
+          <button id="btnAvisoConectar" class="mic" type="button" style="width:auto">Conectar con Google</button>
+          <button id="btnAvisoOmitir" type="button" hidden>Ahora no</button>
+        </div>
+        <p id="avisoGoogleMsg" class="hint" style="margin:10px 0 0;color:var(--alerta)" role="alert" hidden></p>
+      </section>
+
+      <section id="avisoPerfil" class="panel aviso-google" aria-label="Cuéntale tu situación" hidden>
+        <p><b>Cuéntale al copiloto tu situación.</b> En 1 minuto: qué tipo de reunión es, qué quieres lograr y qué ofreces. Así sus consejos serán para ti y no genéricos.</p>
+        <button id="btnConfigPerfil" class="mic" type="button" style="width:auto">Completar mi reunión</button>
+      </section>
+
+      <section id="avisoIA" class="panel aviso-google" aria-label="Configura tu IA" hidden>
+        <p><b>Falta configurar tu IA.</b> El copiloto usa tu propia cuenta de IA (Groq es gratis). Elige tu proveedor y pega tu clave; es una sola vez.</p>
+        <button id="btnConfigIA" class="mic" type="button" style="width:auto">Configurar mi IA</button>
+      </section>
+
+      <section class="panel" aria-label="Micrófono">
+        <p class="label">Escucha</p>
+        <!-- Un solo boton: la app elige sola la mejor forma de escuchar -->
+        <button id="btnEmpezar" class="mic" type="button">Empezar</button>
+        <p id="empezarModo" class="hint"></p>
+        <button id="btnReunion" class="mic" type="button" hidden>Conectar a la reunión</button>
+        <button id="btnMiVoz" class="mic secundario" type="button" hidden>Tu voz: apagada (tocar para activar)</button>
+        <p id="reunionEstado" class="hint" hidden></p>
+        <div id="subsPanel" hidden>
+          <button id="btnSubs" class="mic secundario" type="button" hidden>Usar subtítulos con nombres</button>
+          <p id="subsEstado" class="hint"></p>
+          <div id="personasCaja" hidden>
+            <p class="hint" style="margin:10px 0 0">¿Cuál eres tú? Tócalo una sola vez (se recuerda):</p>
+            <div id="personas" class="personas" role="group" aria-label="Participantes"></div>
+          </div>
+        </div>
+        <p id="interino" class="interino" aria-live="off"></p>
+        <p id="contador" class="contador">Idea en curso: <b id="cuenta">0</b> / <span id="meta">25</span> palabras</p>
+      </section>
+
+      <section class="panel" aria-label="Lo que se escucha">
+        <p class="label">Lo que se escucha</p>
+        <ul id="turnos" class="turnos"></ul>
+      </section>
+    </div>
+
+    <div class="col">
+      <section id="consejo" class="panel consejo" aria-label="Consejo del copiloto" aria-live="polite">
+        <p class="label">Consejo del copiloto</p>
+        <div id="consejoCuerpo"><p class="vacio">Toca "Empezar" cuando inicie tu reunión. El consejo aparece solo: cada 25 palabras de cada persona, o cuando haga una pausa o hable otra persona, sin que toques nada.</p></div>
+        <div class="meta"><span id="consejoHora"></span><span id="envio"></span></div>
+      </section>
+
+      <section class="panel" aria-label="Historial de análisis">
+        <div class="hist-cab">
+          <p class="label">Historial de análisis</p>
+          <span id="histTotal" class="hint" style="margin:0"></span>
+        </div>
+        <ul id="historial" class="historial"></ul>
+      </section>
+
+      <section class="panel" aria-label="Comandos">
+        <p class="label">Comandos</p>
+        <div class="comandos">
+          <button type="button" data-cmd="analiza">Analiza ahora</button>
+          <button type="button" data-cmd="siguiente paso">Siguiente paso</button>
+          <button type="button" data-cmd="objeciones">Objeciones</button>
+          <button type="button" data-cmd="resumen">Resumen</button>
+          <button type="button" data-cmd="recordatorios">Recordatorios</button>
+          <button type="button" data-cmd="cierra reunion">Cierra reunión</button>
+        </div>
+        <form id="formManual" class="manual">
+          <input id="textoManual" type="text" placeholder="O escribe lo que se dijo" autocomplete="off" aria-label="Texto manual">
+          <button type="submit">Enviar</button>
+        </form>
+        <p class="hint">Por voz también puedes decir "copiloto resumen" o "copiloto cierra reunión".</p>
+      </section>
+
+      <section class="panel" aria-label="Recordatorios">
+        <p class="label">Recordatorios detectados</p>
+        <ul id="recs" class="recs"><li style="color:var(--muted);list-style:none;margin-left:-20px">Aún no hay ninguno.</li></ul>
+      </section>
+
+      <section class="panel">
+        <details id="panelAjustes">
+          <summary>Ajustes</summary>
+          <div class="ajustes">
+            <div id="bloquePerfil">
+              <p class="hint" style="margin:0 0 8px"><b>Mi reunión</b> · cuéntale al copiloto tu situación para que sus consejos sean para ti</p>
+              <label>¿Qué tipo de reunión es?
+                <input id="pfEscenario" type="text" maxlength="80" placeholder="Ej.: Venta, Entrevista de trabajo, Negociación, Asesoría">
+              </label>
+              <label>¿Qué quieres lograr?
+                <input id="pfObjetivo" type="text" maxlength="200" placeholder="Ej.: Que contrate mi servicio mensual / Conseguir una segunda entrevista">
+              </label>
+              <label>Cuéntale sobre ti o lo que ofreces
+                <textarea id="pfContexto" rows="3" maxlength="600" placeholder="Ej.: Soy diseñadora freelance, cobro 500 USD por proyecto, entrego en 2 semanas"></textarea>
+              </label>
+              <label>Enfoque
+                <select id="pfEnfoque">
+                  <option value="descubrimiento">Descubrir: entender a la otra persona antes de proponer</option>
+                  <option value="cierre">Cerrar: llevar la conversación a un acuerdo concreto</option>
+                </select>
+              </label>
+              <p id="pfEstado" class="hint" style="margin:6px 0 0"></p>
+            </div>
+            <div id="bloqueIA">
+              <p class="hint" style="margin:0 0 8px"><b>Tu IA</b> · el copiloto usa tu propia cuenta de IA (tu clave se guarda solo en este equipo)</p>
+              <label>Proveedor
+                <select id="iaProveedor">
+                  <option value="groq">Groq (recomendado: gratis y el más rápido)</option>
+                  <option value="gemini">Google Gemini (tiene plan gratis)</option>
+                  <option value="openai">OpenAI / ChatGPT (de pago)</option>
+                  <option value="claude">Claude de Anthropic (de pago)</option>
+                </select>
+              </label>
+              <p class="hint" style="margin:6px 0">Crea tu clave aquí: <a id="iaEnlace" href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a></p>
+              <label>Tu clave (API key)
+                <input id="iaClave" type="password" autocomplete="off" placeholder="Pega aquí tu clave">
+              </label>
+              <label>Modelo (opcional, déjalo vacío para usar el recomendado)
+                <input id="iaModelo" type="text" autocomplete="off" placeholder="">
+              </label>
+              <label id="iaAudioCaja">Clave de Groq para el audio y para buscar en internet (opcional)
+                <input id="iaAudio" type="password" autocomplete="off" placeholder="Solo si usas «Audio de la pestaña» en vez de subtítulos">
+              </label>
+              <p id="iaEstado" class="hint" style="margin:6px 0 0"></p>
+            </div>
+            <label>Cómo escuchar la reunión
+              <select id="fuente">
+                <option value="auto" selected>Automático (recomendado)</option>
+                <option value="subs">Subtítulos con nombres (necesita la extensión)</option>
+                <option value="audio">Audio de la pestaña (sin nombres)</option>
+                <option value="mic">Micrófono (reunión presencial, tú marcas quién habla)</option>
+              </select>
+            </label>
+            <details id="modoManual">
+              <summary>Controles del micrófono (reunión presencial)</summary>
+              <p class="hint" style="margin:8px 0">El micrófono no distingue voces: tú marcas quién habla con los botones o las teclas C y Y. Pon la laptop en el centro de la mesa.</p>
+              <button id="btnMic" class="mic secundario" type="button">Empezar a escuchar</button>
+              <div class="quien" role="group" aria-label="Quién habla">
+                <button id="btnCliente" class="c" type="button" aria-pressed="true">Habla el cliente (C)</button>
+                <button id="btnYo" class="y" type="button" aria-pressed="false">Hablo yo (Y)</button>
+              </div>
+              <p id="hintMic" class="hint">Micrófono: marca quién habla, porque el micrófono no distingue voces.</p>
+            </details>
+            <label>Dirección del servidor del copiloto (no la cambies salvo que te lo pidan)
+              <input id="url" type="url" autocomplete="off">
+            </label>
+            <label>Cada cuánto se transcribe el audio de la reunión
+              <select id="trozo">
+                <option value="4000">Cada 4 segundos (lo más rápido, muchas consultas)</option>
+                <option value="5000" selected>Cada 5 segundos (recomendado)</option>
+                <option value="6000">Cada 6 segundos</option>
+                <option value="8000">Cada 8 segundos</option>
+                <option value="10000">Cada 10 segundos (menos consultas)</option>
+              </select>
+            </label>
+            <label>Idioma del micrófono (las reuniones por audio o subtítulos detectan cualquier idioma)
+              <select id="idioma">
+                <option value="es-PE">Español (Perú)</option>
+                <option value="es-MX">Español (México)</option>
+                <option value="es-CO">Español (Colombia)</option>
+                <option value="es-AR">Español (Argentina)</option>
+                <option value="es-CL">Español (Chile)</option>
+                <option value="es-ES">Español (España)</option>
+                <option value="es-US">Español (Estados Unidos)</option>
+                <option value="en-US">English (US)</option>
+                <option value="en-GB">English (UK)</option>
+                <option value="pt-BR">Português (Brasil)</option>
+                <option value="fr-FR">Français</option>
+                <option value="de-DE">Deutsch</option>
+                <option value="it-IT">Italiano</option>
+                <option value="ru-RU">Русский (ruso)</option>
+                <option value="zh-CN">中文 (chino mandarín)</option>
+                <option value="zh-TW">中文 (chino tradicional)</option>
+                <option value="ja-JP">日本語 (japonés)</option>
+                <option value="ko-KR">한국어 (coreano)</option>
+              </select>
+            </label>
+            <label>Palabras para sugerir una respuesta
+              <select id="palabras">
+                <option value="15">15 palabras (muy seguido)</option>
+                <option value="25" selected>25 palabras</option>
+                <option value="40">40 palabras</option>
+              </select>
+            </label>
+            <label>Pausa para sugerir cuando dejan de hablar
+              <select id="pausa">
+                <option value="1000">1 segundo (muy rápido)</option>
+                <option value="1500" selected>1,5 segundos</option>
+                <option value="2000">2 segundos</option>
+                <option value="3000">3 segundos</option>
+                <option value="4000">4 segundos (pausas largas)</option>
+              </select>
+            </label>
+            <div>
+              <p class="hint" style="margin:0 0 8px"><b>Historial en Google Sheets</b></p>
+              <p id="googleEstado" class="hint google-estado" style="margin:0 0 8px">No conectado.</p>
+              <button id="btnGoogleConectar" type="button">Conectar con Google</button>
+              <button id="btnGoogleDesconectar" type="button" hidden>Desconectar este equipo</button>
+              <button id="btnGoogleBorrar" type="button" hidden style="border-color:var(--alerta);color:var(--alerta)">Borrar mi cuenta del copiloto</button>
+            </div>
+            <div>
+              <p class="hint" style="margin:0 0 8px">Tu nombre en las reuniones: <b id="miNombreTxt">automático</b>
+                <button id="btnOlvidarNombre" type="button" style="min-height:32px;padding:2px 10px;margin-left:6px">Cambiar</button></p>
+              <p class="hint" style="margin:0 0 8px">Reunión actual: <span id="sesion"></span></p>
+              <button id="btnNueva" type="button">Empezar una reunión nueva</button>
+            </div>
+          </div>
+        </details>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div id="guia" class="guia" role="dialog" aria-modal="true" aria-labelledby="guiaTitulo" hidden>
+  <div class="guia-caja">
+    <div class="guia-puntos" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+
+    <div data-paso="1">
+      <p class="guia-num">Paso 1 de 3</p>
+      <h2 id="guiaTitulo">Conecta tu cuenta de Google</h2>
+      <p>Así tu historial se guarda en <b>tu propio</b> Google Sheets. Solo se hace una vez.</p>
+      <p class="nota">👉 En la ventana de Google, <b>marca la casilla de Google Drive</b> ✅. Sin eso no se puede crear tu hoja.</p>
+      <button id="gConectar" class="boton-grande" type="button" style="width:100%">Conectar con Google</button>
+      <p id="gEstado1" class="hint" role="status"></p>
+    </div>
+
+    <div data-paso="2" hidden>
+      <p class="guia-num">Paso 2 de 3</p>
+      <h2>Elige tu IA y pega tu clave</h2>
+      <p>El copiloto piensa con <b>tu propia</b> cuenta de IA. Las dos primeras son gratis.</p>
+      <div class="opciones-ia" role="group" aria-label="Proveedor de IA">
+        <button type="button" class="opcion-ia" data-prov="gemini"><b>Google Gemini <span class="etiqueta-rec">Recomendado</span></b><small>Gratis · con tu cuenta de Google</small></button>
+        <button type="button" class="opcion-ia" data-prov="groq"><b>Groq</b><small>Gratis · muy rápido</small></button>
+        <button type="button" class="opcion-ia" data-prov="openai"><b>OpenAI (ChatGPT)</b><small>De pago</small></button>
+        <button type="button" class="opcion-ia" data-prov="claude"><b>Claude</b><small>De pago</small></button>
+      </div>
+      <p><b>1.</b> Saca tu clave (se abre en otra pestaña):</p>
+      <button id="gSacarClave" type="button" class="boton-suave" style="width:100%">Sacar mi clave gratis</button>
+      <label><span><b>2.</b> Pégala aquí:</span>
+        <input id="gClave" type="password" autocomplete="off" placeholder="Pega tu clave">
+      </label>
+      <label id="gAudioCaja" hidden><span>Opcional (recomendado): pega también una clave gratis de Groq. Sirve para el <b>micrófono</b>, el <b>audio de la pestaña</b> y para que «Pregúntale a tu IA» pueda <b>buscar en internet</b>:</span>
+        <input id="gAudio" type="password" autocomplete="off" placeholder="Clave de Groq (opcional)">
+      </label>
+      <div class="acciones-fila"><button id="gProbar" type="button" class="boton-suave">Probar mi IA</button></div>
+      <p id="gEstado2" class="hint" role="status"></p>
+    </div>
+
+    <div data-paso="3" hidden>
+      <p class="guia-num">Paso 3 de 3</p>
+      <h2>Cuéntale de tu reunión</h2>
+      <p>Así los consejos son para ti y no genéricos. Puedes cambiarlo cuando quieras.</p>
+      <p style="margin:0"><b>¿Qué tipo de reunión es?</b></p>
+      <div id="gChips" class="chips" role="group" aria-label="Tipo de reunión">
+        <button type="button">Venta</button><button type="button">Entrevista de trabajo</button><button type="button">Negociación</button>
+        <button type="button">Clase o estudio</button><button type="button">Reunión de equipo</button><button type="button" data-otra="1">Otra</button>
+      </div>
+      <label id="gOtraCaja" hidden><span>Escribe el tipo:</span><input id="gOtra" type="text" maxlength="80"></label>
+      <label><span><b>¿Qué quieres lograr?</b></span><input id="gObjetivo" type="text" maxlength="200" placeholder="Ej.: que contrate mi plan mensual"></label>
+      <label><span><b>Cuéntale sobre ti o lo que ofreces</b> (opcional)</span><textarea id="gContexto" rows="3" maxlength="600" placeholder="Ej.: vendo internet de fibra, el plan cuesta 30 USD al mes"></textarea></label>
+      <p id="gEstado3" class="hint" role="status"></p>
+    </div>
+
+    <div data-paso="4" hidden>
+      <p class="guia-num">¡Todo listo!</p>
+      <h2>Así se usa el copiloto</h2>
+      <ol class="pasos-uso">
+        <li><span class="n" aria-hidden="true">🖥️</span><span>Abre tu reunión de <b>Meet, Zoom o Teams en el navegador</b>. Si es presencial, deja la laptop en la mesa.</span></li>
+        <li><span class="n" aria-hidden="true">▶️</span><span>Toca el botón verde <b>Empezar</b>.</span></li>
+        <li><span class="n" aria-hidden="true">💡</span><span>Lee el <b>consejo</b> grande: te dice qué decir o qué preguntar.</span></li>
+        <li><span class="n" aria-hidden="true">📄</span><span>Arriba tienes tu <b>historial</b>, la <b>transcripción completa</b> y <b>Pregúntale a tu IA</b>.</span></li>
+        <li><span class="n" aria-hidden="true">🔔</span><span><b>Avisa a las personas de la reunión</b> que usas un asistente que transcribe la conversación.</span></li>
+      </ol>
+      <div id="gExtCaja" class="nota">
+        <b>Opcional · para saber quién habla</b> en Meet, Zoom o Teams: instala la extensión del Copiloto (2 minutos).
+        <div class="acciones-fila" style="margin-top:8px"><a class="boton-suave" href="instalar-extension.html" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;text-decoration:none;color:inherit;border:1px solid var(--line);border-radius:10px">Instalar la extensión</a></div>
+      </div>
+      <p id="gExtOk" class="nota ok" hidden>✓ La extensión ya está instalada: el copiloto sabrá quién habla.</p>
+    </div>
+
+    <div class="guia-pie">
+      <button id="gSaltar" type="button" class="enlace-boton">Cerrar la guía</button>
+      <div class="der">
+        <button id="gAtras" type="button" class="boton-suave">Atrás</button>
+        <button id="gSiguiente" type="button" class="boton-grande">Siguiente</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // v17: la app y el servidor viven juntos en Oracle. Desde ahi se usa la misma direccion de la pagina;
+  // desde cualquier otro lugar (por ejemplo la copia vieja en Netlify), el servidor de Oracle.
+  var SERVIDOR = 'https://copiloto.example.com';   // cambia por tu dominio
+  var RUTA_CHAT = '/webhook/b7d2e9a4-0002-4c22-8b02-000000000002/chat';
+  var URL_POR_DEFECTO = (location.protocol === 'https:' && !/netlify\.app$/i.test(location.hostname) ? location.origin : SERVIDOR) + RUTA_CHAT;
+  // ID de cliente OAuth de Google Cloud (tipo "Aplicacion web"). Ver la guia de configuracion.
+  var GOOGLE_CLIENT_ID = 'TU_CLIENT_ID.apps.googleusercontent.com';   // tu ID de cliente OAuth de Google
+  var COMANDOS = ['analiza', 'siguiente paso', 'objeciones', 'resumen', 'recordatorios', 'cierra reunion', 'cierra la reunion', 'cerrar reunion'];
+  var MAX_HISTORIAL = 300;    // analisis que se conservan en esta app (en Google Sheets se guardan todos)
+
+  var $ = function (id) { return document.getElementById(id); };
+  var el = {
+    estado: $('estado'), btnMic: $('btnMic'), btnCliente: $('btnCliente'), btnYo: $('btnYo'),
+    interino: $('interino'), cuenta: $('cuenta'), meta: $('meta'),
+    turnos: $('turnos'), consejo: $('consejo'), cuerpo: $('consejoCuerpo'),
+    hora: $('consejoHora'), envio: $('envio'), recs: $('recs'),
+    historial: $('historial'), histTotal: $('histTotal'),
+    url: $('url'), idioma: $('idioma'), pausa: $('pausa'), palabras: $('palabras'), sesion: $('sesion'), btnNueva: $('btnNueva'),
+    form: $('formManual'), manual: $('textoManual'),
+    btnReunion: $('btnReunion'), reunionEstado: $('reunionEstado'), hintMic: $('hintMic'), trozo: $('trozo'),
+    btnEmpezar: $('btnEmpezar'), empezarModo: $('empezarModo'), fuente: $('fuente'), personasCaja: $('personasCaja'),
+    miNombreTxt: $('miNombreTxt'), btnOlvidarNombre: $('btnOlvidarNombre')
+  };
+
+  /* ---------- almacenamiento opcional ---------- */
+  function guardar(k, v) { try { localStorage.setItem('copiloto.' + k, v); } catch (e) {} }
+  function leer(k, d) { try { var v = localStorage.getItem('copiloto.' + k); return v === null ? d : v; } catch (e) { return d; } }
+
+  // v15: quien tenia guardado el servidor viejo (n8n Cloud) pasa solo al de Oracle
+  el.url.value = leer('url', URL_POR_DEFECTO);
+  el.idioma.value = leer('idioma', 'es-PE');
+  el.pausa.value = leer('pausa', '1500');
+  el.palabras.value = leer('palabras', '25');
+  el.url.addEventListener('change', function () { guardar('url', el.url.value.trim()); });
+  el.idioma.addEventListener('change', function () { guardar('idioma', el.idioma.value); if (rec) reiniciarReconocimiento(); });
+  el.pausa.addEventListener('change', function () { guardar('pausa', el.pausa.value); });
+  el.palabras.addEventListener('change', function () { guardar('palabras', el.palabras.value); pintarInterino(); });
+  el.trozo.value = leer('trozo', '5000');
+  el.trozo.addEventListener('change', function () { guardar('trozo', el.trozo.value); });
+
+  /* ---------- estado ---------- */
+  // Si recargas la pagina en medio de una reunion (menos de 2 horas sin actividad), sigue la misma reunion
+  var SESION_MAX_MS = 2 * 60 * 60 * 1000;
+  var sesionRetomada = false;
+  var sessionId = (function () {
+    try {
+      var g = JSON.parse(leer('sesion.actual', 'null'));
+      if (g && g.id && Date.now() - g.t < SESION_MAX_MS) { sesionRetomada = true; return g.id; }
+    } catch (e) {}
+    return nuevaSesion();
+  })();
+  function marcarSesion() { guardar('sesion.actual', JSON.stringify({ id: sessionId, t: Date.now() })); }
+  marcarSesion();
+  var quien = 'CLIENTE';
+  var escuchando = false;
+  var rec = null;
+  var ultimas = [];          // palabras de lo que se lleva dicho en esta sesion de voz (finales + provisional)
+  var enviadas = 0;          // cuantas de esas palabras ya se mandaron a n8n
+  var hayPendiente = false;
+  var quienPend = 'CLIENTE';
+  var temporizador = null;
+  var cola = Promise.resolve();
+  var wake = null;
+
+  function nuevaSesion() {
+    return 'reunion-' + new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 6);
+  }
+  el.sesion.textContent = sessionId;
+
+  function horaAhora() {
+    return new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  function ponerEstado(texto, clase) {
+    el.estado.textContent = texto;
+    el.estado.className = 'pill' + (clase ? ' ' + clase : '');
+  }
+
+  /* ---------- quien habla ---------- */
+  function ponerQuien(q) {
+    if (q === quien) return;
+    if (reunion.activo && q === 'CLIENTE') return;  // conectado a la reunion: el cliente llega por la pestaña, el micro es YO
+    enviarPendientes('cambio de turno');  // lo dicho hasta ahora se envia con la etiqueta anterior
+    quien = q;
+    el.btnCliente.setAttribute('aria-pressed', String(q === 'CLIENTE'));
+    el.btnYo.setAttribute('aria-pressed', String(q === 'YO'));
+  }
+  el.btnCliente.addEventListener('click', function () { ponerQuien('CLIENTE'); });
+  el.btnYo.addEventListener('click', function () { ponerQuien('YO'); });
+  document.addEventListener('keydown', function (e) {
+    var t = e.target && e.target.tagName;
+    if (t === 'INPUT' || t === 'SELECT' || t === 'TEXTAREA' || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!escuchando) return;   // atajos solo en el modo manual con micrófono
+    var k = (e.key || '').toLowerCase();
+    if (k === 'c') ponerQuien('CLIENTE');
+    if (k === 'y') ponerQuien('YO');
+  });
+
+  /* ---------- reconocimiento de voz ---------- */
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    ponerEstado('Usa Chrome o Edge', 'err');
+    el.btnMic.disabled = true;
+    el.btnMic.textContent = 'Este navegador no puede escuchar';
+  }
+
+  function crearReconocimiento() {
+    var r = new SR();
+    r.lang = el.idioma.value;
+    r.continuous = true;
+    r.interimResults = true;   // cuenta tambien lo que se esta diciendo, no solo las frases ya confirmadas
+    r.onresult = function (e) {
+      var partes = [];
+      for (var i = 0; i < e.results.length; i++) partes.push(e.results[i][0].transcript);
+      var todo = partes.join(' ').replace(/\s+/g, ' ').trim();
+      ultimas = todo ? trocear(todo) : [];
+      actualizarPendiente();
+    };
+    r.onerror = function (e) {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        escuchando = false;
+        ponerEstado('Sin permiso de micrófono', 'err');
+        actualizarBoton();
+      } else if (e.error === 'network') {
+        ponerEstado('Sin internet para la voz', 'err');
+      }
+      /* 'no-speech' y 'aborted' son normales: se ignoran */
+    };
+    r.onend = function () {
+      enviarPendientes('pausa');
+      ultimas = []; enviadas = 0; hayPendiente = false;
+      pintarInterino();
+      if (escuchando) { setTimeout(function () { try { r.start(); } catch (err) {} }, 100); }
+    };
+    return r;
+  }
+
+  function reiniciarReconocimiento() {
+    if (!escuchando) { rec = null; return; }
+    var anterior = rec;
+    rec = crearReconocimiento();
+    try { anterior.onend = null; anterior.stop(); } catch (e) {}
+    try { rec.start(); } catch (e) {}
+  }
+
+  function actualizarBoton() {
+    el.btnMic.classList.toggle('live', escuchando);
+    el.btnMic.textContent = escuchando ? 'Escuchando… tocar para detener' : 'Empezar a escuchar';
+    pintarMiVoz();
+  }
+
+  /* v16: con el audio de la pestaña, el micrófono se activa solo para registrar TU voz como YO
+     (el audio de la pestaña trae solo a los demás). Se puede apagar y la app lo recuerda. */
+  function pintarMiVoz() {
+    var b = $('btnMiVoz');
+    if (!b) return;
+    var visible = !!(typeof reunion !== 'undefined' && reunion && reunion.activo && SR && !ES_ESCRITORIO);
+    b.hidden = !visible;
+    b.classList.toggle('live', visible && escuchando);
+    b.textContent = escuchando ? 'Tu voz: activada (tocar para apagar)' : 'Tu voz: apagada (tocar para activar)';
+  }
+
+  async function pedirPantallaEncendida() {
+    try { if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); } catch (e) {}
+  }
+
+  el.btnMic.addEventListener('click', function () {
+    if (!SR) return;
+    if (escuchando) {
+      escuchando = false;
+      enviarPendientes('pausa');
+      try { rec.stop(); } catch (e) {}
+      try { if (wake && !reunion.activo) wake.release(); } catch (e) {}
+      refrescarEstado();
+      pintarInterino();
+      actualizarBoton();
+      return;
+    }
+    escuchando = true;
+    rec = crearReconocimiento();
+    try { rec.start(); } catch (e) {}
+    pedirPantallaEncendida();
+    refrescarEstado();
+    actualizarBoton();
+  });
+
+  function refrescarEstado() {
+    if (subs.activo) ponerEstado('Subtítulos · ' + (subs.nombrePlataforma || 'reunión'), 'on');
+    else if (reunion.activo) ponerEstado(escuchando ? 'Reunión + micrófono' : 'Reunión conectada', 'on');
+    else if (escuchando) ponerEstado('Escuchando', 'on');
+    else ponerEstado('Apagado');
+    pintarEmpezar();
+  }
+
+  /* ---------- BOTON UNICO "Empezar": la app elige sola la mejor forma de escuchar ----------
+     1) Con la extension instalada: subtitulos con nombres (sabe quien habla, sin botones).
+     2) Sin extension: audio de la pestaña de la reunion.
+     3) En celular (no se puede capturar otra app): micrófono como respaldo. */
+  function modoElegido() {
+    var f = el.fuente.value;
+    if (f === 'subs' || f === 'audio' || f === 'mic') return f;
+    return subs.extension ? 'subs' : 'audio';
+  }
+
+  el.btnEmpezar.addEventListener('click', function () {
+    if (subs.activo) { detenerSubs(); return; }
+    if (reunion.activo) { desconectarReunion('Detenido.'); return; }
+    if (escuchando) { el.btnMic.click(); return; }
+    var m = modoElegido();
+    if (m === 'subs') iniciarSubs();
+    else if (m === 'mic') el.btnMic.click();
+    else if (puedeCapturar) conectarReunion();
+    else el.btnMic.click();
+  });
+  el.fuente.value = leer('fuente', 'auto');
+  el.fuente.addEventListener('change', function () { guardar('fuente', el.fuente.value); pintarEmpezar(); });
+
+  function hayYo() { return Object.keys(subs.personas).some(esYo); }
+
+  function pintarEmpezar() {
+    var activo = subs.activo || reunion.activo || escuchando;
+    var m = modoElegido();
+    el.btnEmpezar.classList.toggle('conectado', activo);
+    el.btnEmpezar.textContent = activo ? 'Escuchando… tocar para detener' : 'Empezar';
+    el.reunionEstado.hidden = !(reunion.activo || (!activo && m === 'audio' && puedeCapturar && el.reunionEstado.style.color));
+    elSubs.panel.hidden = !(subs.activo || (!activo && m === 'subs'));
+    if (activo) {
+      el.empezarModo.textContent = escuchando && !reunion.activo && !subs.activo ? 'Modo manual con micrófono.' : '';
+    } else if (m === 'subs') {
+      el.empezarModo.textContent = subs.extension
+        ? 'Abre tu reunión (Meet, Zoom web o Teams web) con los subtítulos activados y toca Empezar. El copiloto sabrá quién habla.'
+        : 'Falta la extensión del Copiloto para leer los subtítulos. Instálala o cambia el modo en Ajustes.';
+    } else if (m === 'mic') {
+      el.empezarModo.textContent = 'Micrófono para reunión presencial. Marca quién habla con los botones "Habla el cliente" / "Hablo yo" (teclas C y Y) en Ajustes.';
+      $('modoManual').open = true;
+    } else if (!puedeCapturar) {
+      el.empezarModo.textContent = 'En este dispositivo se usará el micrófono. Para saber quién habla, usa el copiloto en una computadora.';
+    } else {
+      el.empezarModo.textContent = ES_ESCRITORIO
+        ? 'Escucha todo lo que suena en la computadora: Meet, Zoom, Teams o cualquier app.'
+        : 'Al tocar Empezar, elige la pestaña de la reunión y activa "Compartir audio de la pestaña". Tu voz se registra con el micrófono (usa audífonos). Para saber quién habla, instala la extensión del Copiloto.';
+    }
+    // La lista de participantes aparece solo si hace falta (en Meet tú apareces como "Tú")
+    el.personasCaja.hidden = !(subs.activo && Object.keys(subs.personas).length && !hayYo());
+    if (el.miNombreTxt) el.miNombreTxt.textContent = miNombre || 'automático';
+  }
+
+  /* ---------- CONECTAR A LA REUNION: audio de la pestaña de Meet (el cliente) ----------
+     El navegador entrega el audio digital de la pestaña, sin pasar por el aire ni por el micrófono.
+     Se graba en trozos de unos segundos, n8n los transcribe con Gemini y el texto entra como CLIENTE.
+     Las mismas reglas: apenas hay N palabras se analiza; si hay silencio, se analiza lo que quedó. */
+  var reunion = { miVozAuto: false, activo: false, stream: null, audio: null, rec: null, ctx: null, medidor: null, pico: 0, palabras: [], colaT: Promise.resolve(), pendientes: 0 };
+  var UMBRAL_VOZ = 0.012;   // nivel minimo para considerar que en el trozo hubo voz
+
+  var puedeCapturar = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia && window.MediaRecorder);
+
+  // Programa de escritorio (opcion 2): captura TODO el audio de la computadora (Meet, Zoom, Teams...)
+  // sin elegir pestaña. Ahi el reconocimiento de voz del navegador no existe, asi que se oculta el micrófono.
+  var ES_ESCRITORIO = !!(window.copilotoEscritorio && window.copilotoEscritorio.esEscritorio);
+  var ETIQUETA_REUNION = ES_ESCRITORIO ? 'Escuchar la reunión' : 'Conectar a la reunión';
+  if (ES_ESCRITORIO) {
+    el.btnReunion.textContent = ETIQUETA_REUNION;
+    el.reunionEstado.textContent = 'Escucha todo lo que suena en la computadora: Meet, Zoom, Teams o cualquier app, incluso con audífonos. Lo que digas tú, escríbelo abajo si quieres registrarlo.';
+    [el.btnMic, el.btnCliente.parentNode, el.hintMic].forEach(function (n) { n.hidden = true; n.style.display = 'none'; });
+    el.cuerpo.replaceChildren(textoVacio('Toca "Empezar" cuando inicie tu llamada. El consejo aparece solo: cada 25 palabras del cliente, o cuando haga una pausa.'));
+    var mm = $('modoManual'); if (mm) mm.style.display = 'none';
+    if (el.fuente) { el.fuente.value = 'audio'; el.fuente.parentNode.style.display = 'none'; }
+  }
+  if (!puedeCapturar) {
+    el.btnReunion.disabled = true;
+    el.btnReunion.textContent = 'Conectar a la reunión (solo en computadora)';
+    el.reunionEstado.textContent = 'En este dispositivo no se puede capturar el audio de otra app. Usa el micrófono de abajo o abre el copiloto en una computadora con Chrome o Edge.';
+  }
+
+  function avisoReunion(texto, error) {
+    el.reunionEstado.textContent = texto;
+    el.reunionEstado.style.color = error ? 'var(--alerta)' : '';
+    pintarEmpezar();
+  }
+
+  el.btnReunion.addEventListener('click', function () {
+    if (reunion.activo) desconectarReunion('Desconectado de la reunión.');
+    else conectarReunion();
+  });
+
+  async function conectarReunion() {
+    if (subs.activo) detenerSubs();     // no usar audio y subtitulos a la vez (se duplicaria todo)
+    if (!claveAudio()) {
+      avisoReunion('El modo audio necesita una clave de Groq u OpenAI (Ajustes → Tu IA). Te recomendamos usar subtítulos: no necesitan clave de audio.', true);
+      return;
+    }
+    var s;
+    try {
+      s = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        selfBrowserSurface: 'exclude',
+        systemAudio: 'include',
+        preferCurrentTab: false
+      });
+    } catch (e) {
+      avisoReunion('No se conectó: cancelaste la ventana de compartir o el navegador no lo permitió.', true);
+      return;
+    }
+    var pistas = s.getAudioTracks();
+    if (!pistas.length) {
+      s.getTracks().forEach(function (t) { t.stop(); });
+      avisoReunion('No llegó audio. Vuelve a conectar, elige la pestaña de la reunión y activa "Compartir audio de la pestaña".', true);
+      return;
+    }
+    reunion.stream = s;
+    reunion.audio = new MediaStream(pistas);
+    reunion.activo = true;
+    reunion.palabras = [];
+    s.getTracks().forEach(function (t) { t.onended = function () { desconectarReunion('La reunión dejó de compartirse.'); }; });
+
+    // Medidor de nivel: sirve para no enviar trozos en silencio (ahorra consultas) y detectar pausas
+    try {
+      reunion.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      var fuente = reunion.ctx.createMediaStreamSource(reunion.audio);
+      var analizador = reunion.ctx.createAnalyser();
+      analizador.fftSize = 2048;
+      fuente.connect(analizador);
+      var datosNivel = new Float32Array(analizador.fftSize);
+      reunion.medidor = setInterval(function () {
+        analizador.getFloatTimeDomainData(datosNivel);
+        var suma = 0;
+        for (var i = 0; i < datosNivel.length; i++) suma += datosNivel[i] * datosNivel[i];
+        var rms = Math.sqrt(suma / datosNivel.length);
+        if (rms > reunion.pico) reunion.pico = rms;
+      }, 100);
+    } catch (e) { reunion.ctx = null; }
+
+    // Con la reunion conectada: el cliente llega por la pestaña y el micrófono queda como YO
+    ponerQuien('YO');
+    el.btnCliente.disabled = true;
+    el.btnReunion.classList.add('conectado');
+    el.btnReunion.textContent = 'Reunión conectada… tocar para desconectar';
+    el.hintMic.textContent = 'Tu micrófono registra lo que dices tú (se anota como YO). Los demás llegan por la reunión.';
+    var conMiVoz = SR && !ES_ESCRITORIO && leer('miVoz', 'si') !== 'no';
+    if (conMiVoz && !escuchando) { reunion.miVozAuto = true; el.btnMic.click(); }
+    avisoReunion(conMiVoz
+      ? 'Escuchando la reunión (los demás) y tu micrófono (tú). Usa audífonos para que tu micrófono no capte a los demás.'
+      : 'Escuchando la reunión. Tu voz no se registra: toca "Tu voz" para activarla.');
+    pedirPantallaEncendida();
+    refrescarEstado();
+    pintarInterino();
+    pintarMiVoz();
+    grabarTrozo();
+  }
+
+  $('btnMiVoz').addEventListener('click', function () {
+    if (!reunion.activo || !SR) return;
+    el.btnMic.click();
+    reunion.miVozAuto = escuchando;
+    guardar('miVoz', escuchando ? 'si' : 'no');
+    avisoReunion(escuchando
+      ? 'Escuchando la reunión (los demás) y tu micrófono (tú). Usa audífonos para que tu micrófono no capte a los demás.'
+      : 'Escuchando la reunión. Tu voz no se registra: toca "Tu voz" para activarla.');
+    pintarMiVoz();
+  });
+
+  function desconectarReunion(motivo) {
+    setTimeout(enviarContexto, 2000);   // lo que quedaba pendiente se manda al terminar
+    if (!reunion.activo) return;
+    reunion.activo = false;
+    if (reunion.miVozAuto && escuchando) el.btnMic.click();
+    reunion.miVozAuto = false;
+    pintarMiVoz();
+    try { if (reunion.rec && reunion.rec.state === 'recording') reunion.rec.stop(); } catch (e) {}
+    clearInterval(reunion.medidor);
+    try { if (reunion.ctx) reunion.ctx.close(); } catch (e) {}
+    if (reunion.stream) reunion.stream.getTracks().forEach(function (t) { t.onended = null; t.stop(); });
+    reunion.stream = null; reunion.audio = null; reunion.ctx = null;
+    // Lo que quedo pendiente se analiza cuando termine de transcribirse el ultimo trozo
+    reunion.colaT = reunion.colaT.then(function () { enviarCliente('pausa'); });
+    el.btnCliente.disabled = false;
+    ponerQuien('CLIENTE');
+    el.btnReunion.classList.remove('conectado');
+    el.btnReunion.textContent = ETIQUETA_REUNION;
+    el.hintMic.textContent = 'Micrófono: marca quién habla, porque el micrófono no distingue voces. Con la tecla C o Y cambias sin tocar el mouse. El consejo sale solo, no hace falta detener el audio.';
+    avisoReunion(motivo || 'Desconectado de la reunión.');
+    refrescarEstado();
+    pintarInterino();
+  }
+
+  function duracionTrozo() { return parseInt(el.trozo.value, 10) || 8000; }
+
+  function tipoAudio() {
+    var tipos = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+    for (var i = 0; i < tipos.length; i++) { if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(tipos[i])) return tipos[i]; }
+    return '';
+  }
+
+  // Cada trozo se graba como un archivo completo (se detiene y se vuelve a empezar), para que se pueda transcribir solo
+  function grabarTrozo() {
+    if (!reunion.activo || !reunion.audio) return;
+    var tipo = tipoAudio();
+    var r;
+    try { r = tipo ? new MediaRecorder(reunion.audio, { mimeType: tipo }) : new MediaRecorder(reunion.audio); }
+    catch (e) { desconectarReunion('Este navegador no puede grabar el audio de la reunión.'); return; }
+    var partes = [];
+    reunion.pico = 0;
+    r.ondataavailable = function (e) { if (e.data && e.data.size) partes.push(e.data); };
+    r.onstop = function () {
+      var pico = reunion.pico;
+      var archivo = new Blob(partes, { type: (tipo || 'audio/webm').split(';')[0] });
+      if (reunion.activo) grabarTrozo();      // el siguiente empieza de inmediato
+      procesarTrozo(archivo, pico);
+    };
+    reunion.rec = r;
+    r.start();
+    setTimeout(function () { if (r.state === 'recording') r.stop(); }, duracionTrozo());
+  }
+
+  function procesarTrozo(archivo, pico) {
+    var conVoz = reunion.ctx ? pico >= UMBRAL_VOZ : true;
+    if (!conVoz || archivo.size < 1000) {
+      // Silencio: el cliente dejo de hablar -> se analiza lo que haya quedado (disparador 2)
+      reunion.colaT = reunion.colaT.then(function () { enviarCliente('pausa'); });
+      return;
+    }
+    reunion.pendientes++;
+    pintarInterino();
+    // La transcripcion empieza YA (en paralelo con las demas); solo el resultado se aplica en orden
+    var enCamino = transcribir(archivo);
+    enCamino.catch(function () {});
+    reunion.colaT = reunion.colaT
+      .then(function () { return enCamino; })
+      .then(function (texto) {
+        reunion.pendientes--;
+        if (texto) agregarCliente(texto);
+        else enviarCliente('pausa');
+      }, function (err) {
+        reunion.pendientes--;
+        avisoReunion('No se pudo transcribir un trozo (' + (err && err.message ? err.message : 'error') + '). Sigo intentando con el siguiente.', true);
+        pintarInterino();
+      });
+  }
+
+  // El audio va directo del navegador a la IA de la persona (Groq u OpenAI): no pasa por n8n.
+  function claveAudio() {
+    var c = configIA();
+    if (c.proveedor === 'groq' && c.clave) return { url: 'https://api.groq.com/openai/v1/audio/transcriptions', clave: c.clave, modelo: 'whisper-large-v3-turbo' };
+    if (c.audio) return { url: 'https://api.groq.com/openai/v1/audio/transcriptions', clave: c.audio, modelo: 'whisper-large-v3-turbo' };
+    if (c.proveedor === 'openai' && c.clave) return { url: 'https://api.openai.com/v1/audio/transcriptions', clave: c.clave, modelo: 'whisper-1' };
+    return null;
+  }
+  // Whisper a veces "inventa" frases cuando solo hay ruido o silencio, en varios idiomas: se descartan
+  var RUIDO_DENTRO = [
+    /subt[ií]tulos? (realizados |hechos )?por la comunidad de amara\.?org/gi, /subtitles? by the amara\.?org community/gi,
+    /字幕由\s*amara\.?org\s*社区提供/gi, /请不吝点赞\s*订阅\s*转发\s*打赏支持明镜与点点栏目/g,
+    /untertitel (im auftrag )?(des|der) (zdf|ard)[^.]*\.?/gi, /untertitelung (des|der) (zdf|ard)[^.]*\.?/gi,
+    /редактор субтитров [^.]*\.?/gi, /субтитры (сделал|создавал|подготовил)[^.]*\.?/gi, /ご視聴ありがとうございました/g
+  ];
+  var SOLO_RUIDO = [
+    /^(¡)?gracias( por ver(nos| el v[ií]deo)?)?[.!]*$/i, /^(¡)?suscr[ií]bete[^.]*[.!]*$/i, /^(m[uú]sica|aplausos|risas)[.!]*$/i,
+    /^(thank you|thanks)( (so much|very much))?( for watching)?[.!]*$/i, /^(please )?(like and )?subscribe[^.]*[.!]*$/i, /^you[.!]*$/i,
+    /^(谢谢(观看|大家|收看)?|感谢观看)[。.!！]*$/, /^(продолжение следует|спасибо( за просмотр)?)[.!…]*$/i,
+    /^(vielen dank( fürs zuschauen)?|danke( schön)?)[.!]*$/i, /^(obrigad[oa]( por assistir)?)[.!]*$/i, /^(merci( d'avoir regardé)?)[.!]*$/i,
+    /^[.\s¡!¿?,。！？…]*$/
+  ];
+  function limpiarTranscripcion(t) {
+    t = String(t || '').replace(/\(silencio\)/gi, '').replace(/\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim();
+    RUIDO_DENTRO.forEach(function (r) { t = t.replace(r, ''); });
+    t = t.replace(/\s+/g, ' ').trim();
+    if (SOLO_RUIDO.some(function (r) { return r.test(t); })) t = '';
+    return t;
+  }
+
+  async function transcribir(archivo) {
+    var dest = claveAudio();
+    if (!dest) throw new Error('el modo audio necesita una clave de Groq u OpenAI (Ajustes → Tu IA). Con subtítulos no hace falta');
+    var fd = new FormData();
+    var ext = /ogg/.test(archivo.type) ? 'ogg' : (/mp4/.test(archivo.type) ? 'm4a' : 'webm');
+    fd.append('file', archivo, 'trozo.' + ext);
+    fd.append('model', dest.modelo);
+    fd.append('response_format', 'json');
+    fd.append('temperature', '0');
+    var res = await fetch(dest.url, { method: 'POST', headers: { Authorization: 'Bearer ' + dest.clave }, body: fd });
+    var crudo = await res.text();
+    var j = {};
+    try { j = JSON.parse(crudo); } catch (e) { j = { text: crudo }; }
+    if (!res.ok) {
+      var msg = (j.error && j.error.message) || ('respondió ' + res.status);
+      if (res.status === 401) msg = 'tu clave de audio no es válida';
+      if (res.status === 429) msg = 'llegaste al límite de tu cuenta de IA para audio';
+      throw new Error(msg);
+    }
+    var texto = limpiarTranscripcion(j.text || '');
+    if (reunion.activo) avisoReunion('Escuchando la reunión. Último trozo transcrito a las ' + horaAhora() + '.');
+    return texto;
+  }
+
+  function agregarCliente(texto) {
+    var N = palabrasPorConsejo();
+    reunion.palabras = reunion.palabras.concat(trocear(texto));
+    // Disparador 1: apenas hay N palabras del cliente, se corta la idea y se analiza
+    while (reunion.palabras.length >= N) {
+      despachar('CLIENTE', unir(reunion.palabras.splice(0, N)), N + ' palabras');
+    }
+    pintarInterino();
+  }
+
+  function enviarCliente(motivo) {
+    if (!reunion.palabras.length) { pintarInterino(); return; }
+    despachar('CLIENTE', unir(reunion.palabras.splice(0)), motivo || 'pausa');
+    pintarInterino();
+  }
+
+  /* ---------- SUBTITULOS CON NOMBRES (extension de Chrome para Meet, Zoom web y Teams web) ----------
+     La extension lee los subtitulos de la reunion ("Juan Perez: texto") y los manda aqui.
+     Cada persona tiene su propia idea en curso: se analiza a las N palabras, cuando hace una pausa
+     o cuando empieza a hablar otra persona. Tu propio nombre se anota como YO. */
+  var subs = { activo: false, extension: false, bloques: {}, ultimo: null, plataforma: '', nombrePlataforma: '', personas: {} };
+  var NOMBRES_PLATAFORMA = { meet: 'Meet', zoom: 'Zoom', teams: 'Teams' };
+  var ALIAS_YO = ['tu', 'tú', 'you', 'yo', 'me', 'usted'];
+  var miNombre = leer('miNombre', '');
+  var elSubs = { panel: $('subsPanel'), btn: $('btnSubs'), estado: $('subsEstado'), personas: $('personas') };
+
+  function normalNombre(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\(.*?\)/g, '').replace(/\s+/g, ' ').trim(); }
+  function esYo(nombre) {
+    var n = normalNombre(nombre);
+    if (ALIAS_YO.indexOf(n) !== -1) return true;
+    return !!miNombre && n === normalNombre(miNombre);
+  }
+
+  window.addEventListener('message', function (e) {
+    if (e.source !== window || !e.data || e.data.fuente !== 'copiloto-extension') return;
+    if (!subs.extension) {
+      subs.extension = true;
+      pintarEstadoSubs();
+      pintarEmpezar();
+      if (typeof pintarGuia === 'function' && !$('guia').hidden) pintarGuia();
+    }
+    if (e.data.type === 'caption') recibirSubtitulo(e.data);
+  });
+
+  elSubs.btn.addEventListener('click', function () { if (subs.activo) detenerSubs(); else iniciarSubs(); });
+
+  function iniciarSubs() {
+    if (reunion.activo) desconectarReunion('Cambié a subtítulos con nombres.');
+    if (escuchando) el.btnMic.click();          // el micro duplicaria tu voz (los subtitulos ya la traen)
+    subs.activo = true;
+    subs.bloques = {};
+    subs.ultimo = null;
+    elSubs.btn.classList.add('conectado');
+    elSubs.btn.textContent = 'Subtítulos activos… tocar para detener';
+    pintarEstadoSubs();
+    pedirPantallaEncendida();
+    refrescarEstado();
+    pintarInterino();
+  }
+
+  function detenerSubs() {
+    setTimeout(enviarContexto, 500);
+    if (!subs.activo) return;
+    Object.keys(subs.bloques).forEach(function (id) { enviarBloque(subs.bloques[id], 'pausa'); });
+    subs.activo = false;
+    elSubs.btn.classList.remove('conectado');
+    elSubs.btn.textContent = 'Usar subtítulos con nombres';
+    pintarEstadoSubs();
+    refrescarEstado();
+    pintarInterino();
+  }
+
+  function pintarEstadoSubs() {
+    var n = Object.keys(subs.personas).length;
+    if (!subs.activo) {
+      elSubs.estado.textContent = subs.plataforma
+        ? 'Veo subtítulos en ' + subs.nombrePlataforma + '. Toca el botón para que cada idea salga con el nombre de quien habló.'
+        : 'Extensión instalada. Abre tu reunión de Meet, Zoom web o Teams web, activa los subtítulos y toca este botón: cada idea saldrá con el nombre de quien habló.';
+    } else if (!subs.plataforma) {
+      elSubs.estado.textContent = 'Esperando subtítulos… Abre la reunión en otra pestaña y activa los subtítulos (CC).';
+    } else {
+      elSubs.estado.textContent = 'Leyendo subtítulos de ' + subs.nombrePlataforma + (n ? ' · ' + n + (n === 1 ? ' persona' : ' personas') : '') + '.';
+    }
+  }
+
+  function pintarPersonas() {
+    elSubs.personas.replaceChildren();
+    Object.keys(subs.personas).forEach(function (nombre) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      var yo = esYo(nombre);
+      b.setAttribute('aria-pressed', String(yo));
+      b.textContent = nombre + (yo ? ' (tú)' : '');
+      b.title = yo ? 'Eres tú: se anota como YO' : 'Toca si eres tú';
+      b.addEventListener('click', function () {
+        miNombre = esYo(nombre) && ALIAS_YO.indexOf(normalNombre(nombre)) === -1 ? '' : nombre;
+        guardar('miNombre', miNombre);
+        pintarPersonas();
+      });
+      elSubs.personas.appendChild(b);
+    });
+    pintarEmpezar();
+  }
+  if (el.btnOlvidarNombre) el.btnOlvidarNombre.addEventListener('click', function () {
+    miNombre = ''; guardar('miNombre', ''); pintarPersonas();
+  });
+
+  function recibirSubtitulo(d) {
+    if (!d.text || !d.speaker) return;
+    if (subs.plataforma !== d.plataforma) { subs.plataforma = d.plataforma; subs.nombrePlataforma = NOMBRES_PLATAFORMA[d.plataforma] || d.plataforma; refrescarEstado(); }
+    if (!subs.personas[d.speaker]) { subs.personas[d.speaker] = Date.now(); pintarPersonas(); }
+    pintarEstadoSubs();
+    if (!subs.activo) return;
+
+    var b = subs.bloques[d.blockId];
+    if (!b) b = subs.bloques[d.blockId] = { id: d.blockId, speaker: d.speaker, palabras: [], enviadas: 0, timer: null, visto: Date.now() };
+    var nuevas = trocear(d.text);
+
+    // ¿El subtitulo se reemplazo por una frase nueva? (Zoom reutiliza el mismo recuadro)
+    var comun = 0;
+    while (comun < b.palabras.length && comun < nuevas.length && normalizar(b.palabras[comun]) === normalizar(nuevas[comun])) comun++;
+    if (b.palabras.length > 3 && comun < Math.min(b.palabras.length, nuevas.length) * 0.5) {
+      enviarBloque(b, 'pausa');
+      b.enviadas = 0;
+    } else if (b.enviadas > nuevas.length) {
+      b.enviadas = nuevas.length;   // la plataforma corrigio y acorto el texto: no se reenvia
+    }
+    b.palabras = nuevas;
+    b.speaker = d.speaker;
+    b.visto = Date.now();
+
+    // Empezo a hablar otra persona: lo pendiente de la anterior se analiza ya
+    if (subs.ultimo && subs.ultimo !== d.blockId) {
+      var anterior = subs.bloques[subs.ultimo];
+      if (anterior && anterior.speaker !== d.speaker) enviarBloque(anterior, 'cambio de turno');
+    }
+    subs.ultimo = d.blockId;
+
+    // Disparador 1: apenas esa persona suma N palabras, se corta la idea
+    var N = palabrasPorConsejo();
+    while (b.palabras.length - b.enviadas >= N) {
+      var idea = b.palabras.slice(b.enviadas, b.enviadas + N);
+      b.enviadas += N;
+      despacharPersona(b.speaker, unir(idea), N + ' palabras');
+    }
+
+    // Disparador 2: si esa persona hace una pausa, se analiza lo que quedo
+    clearTimeout(b.timer);
+    b.timer = setTimeout(function () { enviarBloque(b, 'pausa'); }, Math.max(2000, parseInt(el.pausa.value, 10) || 1500));
+
+    // Limpieza de bloques viejos
+    var limite = Date.now() - 180000;
+    Object.keys(subs.bloques).forEach(function (id) {
+      var x = subs.bloques[id];
+      if (x.visto < limite && x.enviadas >= x.palabras.length) { clearTimeout(x.timer); delete subs.bloques[id]; }
+    });
+    pintarInterino();
+  }
+
+  function enviarBloque(b, motivo) {
+    if (!b) return;
+    clearTimeout(b.timer);
+    var resto = b.palabras.slice(b.enviadas);
+    b.enviadas = b.palabras.length;
+    if (resto.length) despacharPersona(b.speaker, unir(resto), motivo);
+    pintarInterino();
+  }
+
+  function despacharPersona(nombre, texto, motivo) {
+    if (esYo(nombre)) despachar('YO', texto, motivo, nombre);
+    else despachar('CLIENTE', texto, motivo, nombre);
+  }
+
+  /* ---------- ideas: 1) apenas hay N palabras se analiza; 2) si no, cuando dejan de hablar ---------- */
+  function palabrasPorConsejo() { return parseInt(el.palabras.value, 10) || 25; }
+
+  function pintarInterino() {
+    var pend = Math.max(0, ultimas.length - enviadas);
+    if (subs.activo) {
+      // Subtitulos: la idea en curso de la ultima persona que hablo
+      var b = subs.bloques[subs.ultimo];
+      var resto = b ? b.palabras.slice(b.enviadas) : [];
+      el.interino.textContent = resto.length ? '… ' + b.speaker + ': ' + unir(resto) : '';
+      el.cuenta.textContent = String(resto.length);
+    } else if (reunion.activo || reunion.palabras.length) {
+      // Conectado a la reunion: el contador muestra la idea en curso del CLIENTE
+      var espera = reunion.pendientes > 0 ? ' (transcribiendo…)' : '';
+      el.interino.textContent = reunion.palabras.length ? '… ' + unir(reunion.palabras) + espera : (espera ? espera.trim() : '');
+      el.cuenta.textContent = String(reunion.palabras.length);
+    } else {
+      el.interino.textContent = pend > 0 ? '… ' + unir(ultimas.slice(enviadas)) : '';
+      el.cuenta.textContent = String(pend);
+    }
+    el.meta.textContent = String(palabrasPorConsejo());
+  }
+
+  function actualizarPendiente() {
+    // Si el reconocimiento corrigio y acorto el texto, no se reenvia lo que ya se mando
+    if (enviadas > ultimas.length) enviadas = ultimas.length;
+    clearTimeout(temporizador);
+
+    var N = palabrasPorConsejo();
+    if (ultimas.length - enviadas > 0 && !hayPendiente) { hayPendiente = true; quienPend = quien; }
+
+    // Disparador 1 (el principal): apenas se cuentan N palabras se corta la idea y se analiza YA,
+    // aunque la persona siga hablando. Lo que sobra empieza la idea siguiente.
+    while (ultimas.length - enviadas >= N) {
+      var bloque = ultimas.slice(enviadas, enviadas + N);
+      enviadas += N;
+      despachar(quienPend, unir(bloque), N + ' palabras');
+      quienPend = quien;
+    }
+
+    pintarInterino();
+    if (ultimas.length - enviadas <= 0) { hayPendiente = false; return; }
+
+    // Disparador 2: si dejan de hablar antes de llegar a N, se analiza lo que haya
+    temporizador = setTimeout(function () { enviarPendientes('pausa'); }, parseInt(el.pausa.value, 10) || 1500);
+  }
+
+  function enviarPendientes(motivo) {
+    clearTimeout(temporizador);
+    var pend = ultimas.slice(enviadas);
+    enviadas = ultimas.length;
+    hayPendiente = false;
+    pintarInterino();
+    if (!pend.length) return;
+    despachar(quienPend, unir(pend), motivo || 'pausa');
+  }
+
+  // Chino y japones no separan palabras con espacios: cada 2 caracteres cuentan como una "palabra",
+  // asi el copiloto sigue sugiriendo cada N palabras aunque el cliente hable en esos idiomas
+  var CJK_CH = '぀-ヿ㐀-鿿　-〿＀-￯';
+  var RE_CJK = new RegExp('[' + CJK_CH + ']');
+  var RE_CJK_TROZO = new RegExp('[' + CJK_CH + ']{1,2}|[^' + CJK_CH + ']+', 'g');
+  var RE_CJK_INI = new RegExp('^[' + CJK_CH + ']');
+  var RE_CJK_FIN = new RegExp('[' + CJK_CH + ']$');
+  function trocear(texto) {
+    var out = [];
+    String(texto || '').split(/\s+/).forEach(function (w) {
+      if (!w) return;
+      if (!RE_CJK.test(w)) { out.push(w); return; }
+      out = out.concat(w.match(RE_CJK_TROZO) || [w]);
+    });
+    return out;
+  }
+  function unir(tokens) {
+    var t = '';
+    for (var i = 0; i < tokens.length; i++) {
+      if (i > 0 && !(RE_CJK_FIN.test(tokens[i - 1]) && RE_CJK_INI.test(tokens[i]))) t += ' ';
+      t += tokens[i];
+    }
+    return t;
+  }
+
+  function normalizar(s) {
+    return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[.,!?¿¡]/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  // nombre (opcional): quien habló según los subtítulos de la reunión ("Juan Pérez")
+  function despachar(q, texto, motivo, nombre) {
+    nombre = nombre || '';
+    // Comando por voz: "copiloto resumen", "copiloto cierra reunion"
+    var n = normalizar(texto);
+    if (n.indexOf('copiloto ') === 0) {
+      var cmd = n.slice(9);
+      if (COMANDOS.indexOf(cmd) !== -1) { enviarComando(cmd); return; }
+    }
+    // Tus frases (YO) y las muletillas del cliente ("si", "ok", "aja") no se envian solas:
+    // esperan y viajan junto con la siguiente frase importante (asi n8n hace la mitad de ejecuciones)
+    if (q === 'YO' || (q === 'CLIENTE' && esMuletilla(texto))) { aContexto(q, texto, nombre); return; }
+    // Si la idea anterior de esa misma persona todavia espera su turno, la nueva se junta con ella:
+    // asi el copiloto nunca se queda atrasado analizando ideas viejas
+    if (q === 'CLIENTE' && esperaCliente && esperaCliente.nombre === nombre) {
+      esperaCliente.texto += ' ' + texto;
+      esperaCliente.li.querySelector('.txt').textContent = esperaCliente.texto;
+      if (esperaCliente.item) { esperaCliente.item.texto = esperaCliente.texto; guardarHistorial(); renderHistorial(); }
+      return;
+    }
+    var li = anotarTurno(q, texto, nombre);
+    var item = q === 'CLIENTE' ? nuevaTarjeta(nombre || q, texto, motivo) : null;
+    var info = { tipo: q, nombre: nombre, texto: texto, motivo: motivo, item: item, li: li };
+    if (q === 'CLIENTE') esperaCliente = info;
+    enviar(null, li, info);   // el texto final se arma al momento de enviar (por si se junto con otro)
+  }
+  var esperaCliente = null;
+
+  /* ---------- ENVIO POR BLOQUES ----------
+     Lo que no hace falta analizar al instante se junta y se manda con la proxima frase importante.
+     Si en 30 s no llega ninguna, se manda igual (asi no se pierden tus compromisos ni la alerta de silencio). */
+  var CONTEXTO_MS = 30000;
+  var PALABRAS_RELLENO = ['si', 'ok', 'okay', 'okey', 'vale', 'ya', 'aja', 'mm', 'mmm', 'mhm', 'uh', 'eh', 'ah', 'oh', 'claro',
+    'bueno', 'perfecto', 'entiendo', 'exacto', 'correcto', 'listo', 'dale', 'genial', 'de', 'acuerdo', 'ajam', 'hmm',
+    'yes', 'yeah', 'yep', 'right', 'sure', 'alright', 'great', 'cool', 'got', 'it', 'i', 'see', 'uh-huh', 'mhmm'];
+  function esMuletilla(texto) {
+    var t = trocear(normalizar(texto));
+    if (!t.length || t.length > 4) return false;
+    return t.every(function (w) { return PALABRAS_RELLENO.indexOf(w) !== -1; });
+  }
+  var contexto = { lineas: [], lis: [], timer: null };
+  function aContexto(q, texto, nombre) {
+    var li = anotarTurno(q, texto, nombre);
+    var txt = li && li.querySelector('.txt');
+    if (txt) { var s = document.createElement('span'); s.className = 'espera-ctx'; s.textContent = ' ⏳'; s.title = 'Se envía junto con la próxima frase importante'; txt.appendChild(s); }
+    contexto.lineas.push(q + ': ' + (nombre && q === 'CLIENTE' ? '[' + nombre + '] ' : '') + texto);
+    contexto.lis.push(li);
+    if (!contexto.timer) contexto.timer = setTimeout(enviarContexto, CONTEXTO_MS);
+  }
+  function tomarContexto() {
+    clearTimeout(contexto.timer); contexto.timer = null;
+    var c = { lineas: contexto.lineas, lis: contexto.lis };
+    contexto.lineas = []; contexto.lis = [];
+    return c;
+  }
+  function enviarContexto() {
+    if (!contexto.lineas.length) { clearTimeout(contexto.timer); contexto.timer = null; return; }
+    var c = tomarContexto();
+    enviar(c.lineas.join('\n'), null, { tipo: 'CLIENTE', nombre: '', texto: c.lineas.join(' · '), motivo: 'frases cortas', lisContexto: c.lis });
+  }
+  function marcarContexto(lis, ok) {
+    (lis || []).forEach(function (li) {
+      if (!li) return;
+      var e = li.querySelector('.espera-ctx'); if (e) e.remove();
+      marcar(li, ok);
+    });
+  }
+
+  // Lo que se envia al copiloto: "CLIENTE: [Juan Pérez] texto" (n8n ya lo entiende tal cual)
+  function textoParaCopiloto(info) {
+    return info.tipo + ': ' + (info.nombre && info.tipo === 'CLIENTE' ? '[' + info.nombre + '] ' : '') + info.texto;
+  }
+
+  function anotarTurno(q, texto, nombre) {
+    var li = document.createElement('li');
+    li.className = 'turno ' + q;
+    var a = document.createElement('span'); a.className = 'quien-t'; a.textContent = nombre || q;
+    var b = document.createElement('span'); b.className = 'txt'; b.textContent = texto;
+    li.appendChild(a); li.appendChild(b);
+    el.turnos.appendChild(li);
+    el.turnos.scrollTop = el.turnos.scrollHeight;
+    return li;
+  }
+
+  function marcar(li, ok) {
+    if (!li) return;
+    var m = document.createElement('span');
+    m.textContent = ok ? ' ✓' : ' ✗';
+    m.style.color = ok ? 'var(--cliente)' : 'var(--alerta)';
+    li.querySelector('.txt').appendChild(m);
+  }
+
+  /* ---------- comandos y texto manual ---------- */
+  function enviarComando(cmd) {
+    enviarContexto();   // lo pendiente entra a la transcripcion antes del resumen o el cierre
+    var item = nuevaTarjeta('COMANDO', cmd, 'comando');
+    enviar(cmd, null, { tipo: 'COMANDO', texto: cmd, motivo: 'comando', item: item });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('[data-cmd]'), function (b) {
+    b.addEventListener('click', function () { enviarPendientes('cambio de turno'); enviarComando(b.getAttribute('data-cmd')); });
+  });
+  el.form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var t = el.manual.value.trim();
+    if (!t) return;
+    el.manual.value = '';
+    var n = normalizar(t);
+    if (COMANDOS.indexOf(n) !== -1) { enviarComando(n); return; }
+    var li = anotarTurno(quien, t);
+    var item = quien === 'CLIENTE' ? nuevaTarjeta(quien, t, 'escrito') : null;
+    enviar(quien + ': ' + t, li, { tipo: quien, texto: t, motivo: 'escrito', item: item });
+  });
+
+  // Reunion nueva: cambia el ID de la reunion, pero NO borra el historial ni lo que se escucho
+  el.btnNueva.addEventListener('click', function () {
+    enviarPendientes('cambio de turno');
+    sessionId = nuevaSesion();
+    marcarSesion();
+    el.sesion.textContent = sessionId;
+    cargarTx();
+    var sep = document.createElement('li');
+    sep.className = 'separador';
+    sep.textContent = 'Reunión nueva · ' + horaAhora();
+    el.turnos.appendChild(sep);
+    el.turnos.scrollTop = el.turnos.scrollHeight;
+    el.recs.replaceChildren(recVacio());
+    el.cuerpo.replaceChildren(textoVacio('Reunión nueva lista. El historial anterior sigue abajo.'));
+    el.cuerpo.removeAttribute('data-texto');
+    el.hora.textContent = ''; el.envio.textContent = '';
+    el.consejo.classList.remove('alerta');
+  });
+
+  function recVacio() {
+    var li = document.createElement('li');
+    li.style.cssText = 'color:var(--muted);list-style:none;margin-left:-20px';
+    li.textContent = 'Aún no hay ninguno. Cuando alguien se comprometa a algo con fecha, podrás agregarlo a tu calendario con un toque.';
+    return li;
+  }
+
+  function textoVacio(t) { var p = document.createElement('p'); p.className = 'vacio'; p.textContent = t; return p; }
+
+  /* ---------- historial de analisis (queda en esta app aunque recargues la pagina) ---------- */
+  var historial = [];
+  try { historial = JSON.parse(leer('historial', '[]')) || []; } catch (e) { historial = []; }
+  historial.forEach(function (h) {
+    if (h.estado === 'espera') { h.estado = 'sin'; h.respuesta = 'Sin respuesta: la página se cerró antes de que llegara.'; }
+  });
+
+  function guardarHistorial() {
+    if (historial.length > MAX_HISTORIAL) historial = historial.slice(-MAX_HISTORIAL);
+    guardar('historial', JSON.stringify(historial));
+  }
+
+  function nuevaTarjeta(tipo, texto, motivo) {
+    var ultimo = historial[historial.length - 1];
+    if (!ultimo || ultimo.sesion !== sessionId) {
+      historial.push({ separador: true, sesion: sessionId, hora: horaAhora(), fecha: new Date().toLocaleDateString('es-PE') });
+    }
+    var n = historial.filter(function (h) { return !h.separador && h.sesion === sessionId; }).length + 1;
+    var item = { sesion: sessionId, n: n, hora: horaAhora(), tipo: tipo, texto: texto, motivo: motivo, estado: 'espera', respuesta: 'En cola…' };
+    historial.push(item);
+    guardarHistorial();
+    renderHistorial();
+    return item;
+  }
+
+  function actualizarTarjeta(item, estado, respuesta) {
+    if (!item) return;
+    item.estado = estado;
+    item.respuesta = respuesta;
+    guardarHistorial();
+    renderHistorial();
+  }
+
+  function renderHistorial() {
+    el.historial.replaceChildren();
+    var total = 0;
+    for (var i = historial.length - 1; i >= 0; i--) {   // el mas nuevo arriba
+      var h = historial[i];
+      var li = document.createElement('li');
+      if (h.separador) {
+        li.className = 'separador';
+        li.textContent = 'Reunión · ' + (h.fecha ? h.fecha + ' ' : '') + h.hora + ' · ' + h.sesion;
+        el.historial.appendChild(li);
+        continue;
+      }
+      total++;
+      li.className = 'tarjeta';
+      var cab = document.createElement('div'); cab.className = 'cab';
+      [['n', '#' + h.n], ['', h.hora], ['', h.tipo], ['', h.motivo]].forEach(function (p) {
+        var s = document.createElement('span'); if (p[0]) s.className = p[0]; s.textContent = p[1]; cab.appendChild(s);
+      });
+      li.appendChild(cab);
+      var oido = document.createElement('p'); oido.className = 'oido';
+      oido.textContent = (h.tipo === 'COMANDO' ? '⌘ ' : '🎙 ') + h.texto;
+      li.appendChild(oido);
+      var resp = document.createElement('div'); resp.className = 'resp';
+      if (h.estado === 'ok') {
+        if (construirConsejo(resp, h.respuesta)) li.classList.add('alerta');
+      } else {
+        li.classList.add(h.estado === 'espera' ? 'espera' : 'sin');
+        resp.appendChild(textoVacio(h.respuesta));
+      }
+      li.appendChild(resp);
+      el.historial.appendChild(li);
+    }
+    if (!total) el.historial.appendChild(textoVacio('Aquí se irá guardando cada análisis. No se borra al cambiar de persona ni al empezar otra reunión.'));
+    el.histTotal.textContent = total ? total + ' análisis' : '';
+  }
+
+  /* ---------- envio a n8n (uno a la vez, en orden, para no mezclar la memoria de la reunion) ---------- */
+  function enviar(chatInput, li, info) {
+    cola = cola.then(function () { return enviarAhora(chatInput, li, info); });
+    return cola;
+  }
+
+  async function enviarAhora(chatInput, li, info) {
+    if (info && info === esperaCliente) esperaCliente = null;   // ya empezo: lo nuevo ira en otra idea
+    if (!chatInput && info) {
+      var ctx = tomarContexto();
+      info.lisContexto = ctx.lis;
+      chatInput = (ctx.lineas.length ? ctx.lineas.join('\n') + '\n' : '') + textoParaCopiloto(info);
+    }
+    var url = el.url.value.trim();
+    if (!url) {
+      el.envio.textContent = 'Falta la dirección del servidor (en Ajustes)';
+      actualizarTarjeta(info && info.item, 'sin', 'No se envió: falta la dirección del servidor en Ajustes.');
+      return;
+    }
+    anotarTx(chatInput);   // transcripcion completa de esta reunion
+    el.envio.textContent = 'Analizando…';
+    if (info && info.item) actualizarTarjeta(info.item, 'espera', 'Analizando…');
+    try {
+      var res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'sendMessage', sessionId: sessionId, chatInput: chatInput, appToken: tokenEquipo(), metadata: { appToken: tokenEquipo(), ia: (function (c) { return { proveedor: c.proveedor, clave: c.clave, modelo: c.modelo }; })(configIA()), perfil: perfilReunion() } })
+      });
+      var crudo = await res.text();
+      if (!res.ok) throw new Error('el servidor respondió ' + res.status + (crudo ? ': ' + crudo.slice(0, 100) : ''));
+      var texto = extraerTexto(crudo);
+      // La IA de la persona llego a su limite por minuto: se espera y se reintenta hasta 2 veces (sin mostrar el error)
+      var intentos = 0;
+      while (/límite de uso de tu cuenta de IA/i.test(texto) && intentos < 2) {
+        intentos++;
+        var espera = 20 * intentos;
+        el.envio.textContent = 'Tu IA está al límite por un momento; reintento en ' + espera + ' s…';
+        if (info && info.item) actualizarTarjeta(info.item, 'espera', 'Esperando a tu IA (' + espera + ' s)…');
+        await new Promise(function (r) { setTimeout(r, espera * 1000); });
+        var res2 = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'sendMessage', sessionId: sessionId, chatInput: 'analiza', appToken: tokenEquipo(), metadata: { appToken: tokenEquipo(), ia: (function (c) { return { proveedor: c.proveedor, clave: c.clave, modelo: c.modelo }; })(configIA()), perfil: perfilReunion() } })
+        });
+        texto = extraerTexto(await res2.text());
+      }
+      mostrarRespuesta(texto, info);
+      marcar(li, true);
+      if (info) marcarContexto(info.lisContexto, true);
+      el.envio.textContent = 'Servidor OK · ' + horaAhora();
+    } catch (err) {
+      marcar(li, false);
+      if (info) marcarContexto(info.lisContexto, false);
+      var msg = err && err.message ? err.message : 'error';
+      actualizarTarjeta(info && info.item, 'sin', 'No llegó al servidor (' + msg + ').');
+      el.envio.textContent = 'No llegó al servidor (' + msg + '). Revisa tu internet y vuelve a intentar.';
+      ponerEstado(escuchando ? 'Escuchando (sin servidor)' : 'Sin conexión con el servidor', 'err');
+      setTimeout(function () { if (escuchando) ponerEstado('Escuchando', 'on'); }, 4000);
+    }
+  }
+
+  function extraerTexto(crudo) {
+    try {
+      var j = JSON.parse(crudo);
+      if (Array.isArray(j)) j = j[0] || {};
+      // "analisis" aparece cuando el ultimo nodo del flujo es el de Google Sheets (devuelve la fila guardada)
+      var t = j.output || j.analisis || j.text || j.message || j.response;
+      if (t) return limpiarRespuesta(String(t));
+    } catch (e) { /* puede venir en lineas JSON (streaming) */ }
+    var partes = [];
+    crudo.split(/\r?\n/).forEach(function (linea) {
+      if (!linea.trim()) return;
+      try {
+        var o = JSON.parse(linea);
+        if (o && o.type === 'item' && typeof o.content === 'string') partes.push(o.content);
+        else if (o && (o.output || o.text)) partes.push(String(o.output || o.text));
+      } catch (e) {}
+    });
+    return limpiarRespuesta(partes.join('') || crudo);
+  }
+
+  // Si llega (o quedo guardada) la fila completa de Sheets en formato JSON, se queda solo con el analisis
+  function limpiarRespuesta(t) {
+    t = String(t || '');
+    if (/^\s*\{/.test(t)) {
+      try {
+        var j = JSON.parse(t);
+        if (Array.isArray(j)) j = j[0] || {};
+        t = String(j.output || j.analisis || j.text || t);
+      } catch (e) {}
+    }
+    return t.replace(/\\n/g, '\n');
+  }
+
+  /* ---------- mostrar lo que responde el copiloto ---------- */
+  var SOLO_ESTADO = /^(anotado|escuchando|no recibi|todavia no hay)/i;
+
+  function mostrarRespuesta(texto, info) {
+    texto = String(texto).replace(/\*\*/g, '').trim();
+    traduccionTx(texto);
+    var item = info && info.item;
+    if (!texto) { actualizarTarjeta(item, 'sin', 'El servidor no devolvió texto.'); return; }
+
+    // Recordatorios que n8n confirma con "RECORDATORIO GUARDADO: ..." y, si tienen fecha, "RECORDATORIO FECHA: ..."
+    var fechas = {};
+    var reF = /RECORDATORIO FECHA:\s*([^|\n]+)\|([^|\n]+)\|([^|\n]+)\|?([^\n]*)/gi, mf;
+    while ((mf = reF.exec(texto)) !== null) fechas[mf[3].trim()] = { inicio: mf[1].trim(), fin: mf[2].trim(), accion: mf[3].trim(), responsable: mf[4].trim() };
+    var re = /RECORDATORIO GUARDADO:\s*(.+)/gi, m;
+    while ((m = re.exec(texto)) !== null) {
+      var linea = m[1].trim(), accion = linea.split('|')[0].trim();
+      agregarRecordatorio(linea, fechas[accion] || null);
+    }
+    var sinRec = texto.replace(/\n?RECORDATORIO (GUARDADO|FECHA):\s*.+/gi, '').trim();
+
+    // Traduccion: si el cliente no hablo en espanol, se muestra debajo de su frase en la conversacion
+    var trad = sinRec.match(/^TRADUCCION[^:\n]*:\s*(.+)$/im);
+    if (trad && info && info.li) {
+      var txt = info.li.querySelector('.txt');
+      if (txt && !txt.querySelector('.trad')) {
+        var sp = document.createElement('span'); sp.className = 'trad'; sp.textContent = '→ ' + trad[1].trim();
+        txt.appendChild(sp);
+      }
+    }
+    var sinTrad = trad ? sinRec.replace(trad[0], '').trim() : sinRec;
+    if (trad && SOLO_ESTADO.test(sinTrad)) {
+      // Frase corta que no se analiza: la traduccion queda en la conversacion y el ultimo consejo no se tapa
+      el.envio.textContent = 'Traducción: ' + trad[1].trim();
+      actualizarTarjeta(item, 'sin', 'No se analizó (frase corta). ' + trad[0]);
+      return;
+    }
+
+    // Mensajes de "sigo escuchando": no tapan el ultimo consejo y quedan marcados como "no analizado"
+    if (!sinRec || SOLO_ESTADO.test(sinRec)) {
+      if (sinRec && !/^anotado/i.test(sinRec)) el.envio.textContent = sinRec.replace(/^Escuchando\.\.\.\s*/i, '');
+      actualizarTarjeta(item, 'sin', sinRec ? 'No se analizó: ' + sinRec.replace(/^Escuchando\.\.\.\s*/i, '') : 'Recordatorio guardado.');
+      return;
+    }
+    if (/^recordatorios de la reunion/i.test(sinRec)) { el.envio.textContent = ''; }
+
+    // Un turno de YO que trae contenido real (por ejemplo un compromiso) tambien entra al historial
+    if (!item && info) item = nuevaTarjeta(info.tipo, info.texto, info.motivo);
+    actualizarTarjeta(item, 'ok', sinRec);
+    renderConsejo(sinRec);
+  }
+
+  // Enlaces "Agregar a mi calendario": no piden ningun permiso de Google; la persona confirma con un clic
+  function fechaCal(iso) { return new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); }
+  function enlacesCalendario(f) {
+    var titulo = 'Copiloto: ' + f.accion + (f.responsable ? ' (' + f.responsable + ')' : '');
+    var detalle = 'Compromiso detectado por el Copiloto de Reuniones.';
+    var ini = fechaCal(f.inicio), fin = fechaCal(f.fin);
+    var google = 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(titulo) + '&dates=' + ini + '/' + fin + '&details=' + encodeURIComponent(detalle);
+    var outlook = 'https://outlook.live.com/calendar/0/action/compose?subject=' + encodeURIComponent(titulo) + '&startdt=' + encodeURIComponent(new Date(f.inicio).toISOString()) + '&enddt=' + encodeURIComponent(new Date(f.fin).toISOString()) + '&body=' + encodeURIComponent(detalle);
+    var ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Copiloto de Reuniones//ES', 'BEGIN:VEVENT',
+      'UID:' + ini + '-' + Math.random().toString(36).slice(2) + '@copiloto', 'DTSTAMP:' + fechaCal(new Date().toISOString()),
+      'DTSTART:' + ini, 'DTEND:' + fin, 'SUMMARY:' + titulo.replace(/[,;]/g, ' '), 'DESCRIPTION:' + detalle, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+    return { google: google, outlook: outlook, ics: 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics) };
+  }
+  function agregarRecordatorio(t, fecha) {
+    var vacio = el.recs.querySelector('li[style]');
+    if (vacio) vacio.remove();
+    var ya = Array.prototype.some.call(el.recs.children, function (li) { return li.getAttribute('data-rec') === t; });
+    if (ya) return;
+    var li = document.createElement('li'); li.setAttribute('data-rec', t);
+    li.appendChild(document.createTextNode(t));
+    if (fecha && fecha.inicio) {
+      var e = enlacesCalendario(fecha), cal = document.createElement('span'); cal.className = 'cal';
+      cal.appendChild(document.createTextNode('Agregar a: '));
+      [['Google', e.google], ['Outlook', e.outlook], ['Apple/otro (.ics)', e.ics]].forEach(function (x) {
+        var a = document.createElement('a'); a.href = x[1]; a.target = '_blank'; a.rel = 'noopener'; a.textContent = x[0];
+        if (x[0].indexOf('.ics') !== -1) a.download = 'recordatorio.ics';
+        cal.appendChild(a);
+      });
+      li.appendChild(cal);
+    }
+    el.recs.appendChild(li);
+  }
+
+  // Arma el consejo con formato dentro de un contenedor; devuelve si es alerta.
+  // Vista corta: solo lo que se lee en 3 segundos (ALERTA + lo que hay que decir o preguntar);
+  // el resto (LECTURA, VALIDA, CALIFICACION...) queda plegado en "Ver detalle".
+  var CLAVES_PRINCIPALES = ['TRADUCCION', 'ALERTA', 'DI AHORA', 'PREGUNTA AHORA', 'PREGUNTA ABIERTA'];
+  // "EN INGLES:", "EN CHINO:"... = la frase lista para decir en el idioma del cliente
+  function esPrincipal(k) { return CLAVES_PRINCIPALES.indexOf(k) !== -1 || /^EN [A-ZÁÉÍÓÚÑ]+$/.test(k); }
+
+  function construirConsejo(cont, texto) {
+    cont.replaceChildren();
+    var esAlerta = false;
+    var filas = [];
+    limpiarRespuesta(texto).split(/\r?\n/).forEach(function (linea) {
+      linea = linea.trim();
+      if (!linea) return;
+      var m = linea.match(/^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ ]{2,28})(?:\s*\(([^)]{1,30})\))?:\s*(.*)$/);
+      filas.push(m ? { k: m[1].trim(), v: (m[2] ? '[' + m[2].trim() + '] ' : '') + m[3].trim() } : { k: '', v: linea });
+    });
+
+    var principales = filas.filter(function (f) { return esPrincipal(f.k); });
+    if (!principales.length) principales = filas.slice(0, 2);          // resumen u otros: las 2 primeras lineas
+    var resto = filas.filter(function (f) { return principales.indexOf(f) === -1; });
+
+    function pintar(f, destino) {
+      if (!f.k) {
+        var p = document.createElement('p'); p.className = 'parrafo'; p.textContent = f.v;
+        destino.appendChild(p);
+        return;
+      }
+      var d = document.createElement('div');
+      var clase = 'fila';
+      if (f.k === 'DI AHORA' || f.k === 'PREGUNTA AHORA' || f.k === 'PREGUNTA ABIERTA') clase += ' decir';
+      else if (f.k === 'ALERTA') { clase += ' alerta'; esAlerta = true; }
+      else if (f.k === 'TRADUCCION' || /^EN [A-ZÁÉÍÓÚÑ]+$/.test(f.k)) clase += ' traduccion';
+      else clase += ' nota';
+      d.className = clase;
+      var kk = document.createElement('span'); kk.className = 'k'; kk.textContent = f.k;
+      var vv = document.createElement('span'); vv.className = 'v'; vv.textContent = f.v;
+      d.appendChild(kk); d.appendChild(vv);
+      destino.appendChild(d);
+    }
+
+    principales.forEach(function (f) { pintar(f, cont); });
+    if (resto.length) {
+      var det = document.createElement('details');
+      det.className = 'detalle';
+      var sum = document.createElement('summary'); sum.textContent = 'Ver detalle';
+      det.appendChild(sum);
+      resto.forEach(function (f) { pintar(f, det); });
+      cont.appendChild(det);
+    }
+    return esAlerta;
+  }
+
+  function renderConsejo(texto) {
+    el.cuerpo.setAttribute('data-texto', texto);
+    el.consejo.classList.toggle('alerta', construirConsejo(el.cuerpo, texto));
+    el.hora.textContent = horaAhora();
+  }
+
+  guardarHistorial();
+  renderHistorial();
+  pintarInterino();
+  if (!el.reunionEstado.textContent) el.reunionEstado.textContent = 'Elige la pestaña de la reunión y activa "Compartir audio de la pestaña".';
+  pintarEstadoSubs();
+  pintarEmpezar();
+  /* ---------- HISTORIAL EN EL GOOGLE SHEETS DE CADA USUARIO ----------
+     El usuario conecta su cuenta de Google UNA sola vez. Google le da a la app un codigo de un solo uso;
+     n8n lo canjea por una autorizacion permanente, la guarda cifrada en Supabase y crea la hoja
+     "Copiloto de reuniones - Historial" en el Drive del usuario. Desde ahi n8n guarda cada analisis solo:
+     nunca hay que reconectar. Permiso usado: drive.file (solo la hoja que crea la app, nada mas del Drive).
+     Este equipo guarda un token aleatorio que identifica al usuario ante n8n. */
+  var ALCANCE_DRIVE = 'https://www.googleapis.com/auth/drive.file';
+  var G = {
+    email: leer('cuenta.email', ''),
+    hojaId: leer('cuenta.hojaId', ''),
+    token: leer('cuenta.token', ''),
+    cliente: null, conectando: false, msg: ''
+  };
+  function tokenEquipo() { return G.token || ''; }
+  function clienteIdOk() { return GOOGLE_CLIENT_ID && GOOGLE_CLIENT_ID.indexOf('PEGA_AQUI') !== 0; }
+  function urlConectar() {
+    try { return new URL(el.url.value.trim() || URL_POR_DEFECTO).origin + '/webhook/copiloto-conectar'; }
+    catch (e) { return new URL(URL_POR_DEFECTO).origin + '/webhook/copiloto-conectar'; }
+  }
+
+  function iniciarClienteGoogle() {
+    if (G.cliente) return true;
+    if (!clienteIdOk() || !(window.google && google.accounts && google.accounts.oauth2)) return false;
+    G.cliente = google.accounts.oauth2.initCodeClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: ALCANCE_DRIVE + ' openid email',
+      ux_mode: 'popup',
+      prompt: 'select_account consent',   // consent: asegura la autorizacion permanente
+      callback: alRecibirCodigo,
+      error_callback: function (e) {
+        G.conectando = false;
+        pintarGoogle(e && e.type === 'popup_closed' ? 'Se cerró la ventana de Google sin conectar.' :
+          (e && e.type === 'popup_failed_to_open' ? 'El navegador bloqueó la ventana de Google. Permite ventanas emergentes para esta página.' : 'No se pudo conectar con Google.'));
+      }
+    });
+    return true;
+  }
+
+  function conectarGoogle() {
+    if (!clienteIdOk()) { pintarGoogle('Falta configurar el Client ID de Google en la app.'); return; }
+    if (!iniciarClienteGoogle()) { pintarGoogle('Cargando Google… intenta de nuevo en unos segundos.'); return; }
+    G.conectando = true;
+    pintarGoogle('Abriendo Google…');
+    G.cliente.requestCode();
+  }
+
+  async function alRecibirCodigo(resp) {
+    if (!resp || resp.error || !resp.code) {
+      G.conectando = false;
+      pintarGoogle('Google no dio permiso (' + ((resp && resp.error) || 'sin código') + ').');
+      return;
+    }
+    if (!google.accounts.oauth2.hasGrantedAllScopes(resp, ALCANCE_DRIVE)) {
+      G.conectando = false;
+      pintarGoogle('No se conectó: falta el permiso de Google Drive. Toca "Conectar con Google" otra vez y marca la casilla de Google Drive.');
+      return;
+    }
+    pintarGoogle('Preparando tu hoja…');
+    try {
+      var res = await fetch(urlConectar(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XmlHttpRequest' },
+        body: JSON.stringify({ code: resp.code })
+      });
+      var txt = await res.text();
+      var j = {};
+      try { j = JSON.parse(txt || '{}'); } catch (e) {}
+      if (!res.ok || !j.ok) throw new Error(j.error || ('el servidor respondió ' + res.status));
+      G.email = j.email || ''; G.hojaId = j.hojaId || ''; G.token = j.appToken || '';
+      guardar('cuenta.email', G.email); guardar('cuenta.hojaId', G.hojaId); guardar('cuenta.token', G.token);
+      guardar('google.omitido', '');
+      G.conectando = false;
+      pintarGoogle('');
+      if (typeof pintarIA === 'function') pintarIA();
+      if (typeof pintarPerfil === 'function') pintarPerfil();
+    } catch (e) {
+      G.conectando = false;
+      pintarGoogle('No se pudo terminar la conexión: ' + e.message);
+    }
+  }
+
+  function urlDesconectar() { return urlConectar().replace('/copiloto-conectar', '/copiloto-desconectar'); }
+  function olvidarCuentaLocal() {
+    G.email = ''; G.hojaId = ''; G.token = '';
+    guardar('cuenta.email', ''); guardar('cuenta.hojaId', ''); guardar('cuenta.token', '');
+  }
+  // borrarTodo=false: quita solo este equipo. borrarTodo=true: borra la cuenta, sus reuniones y su autorizacion del servidor.
+  async function desconectarGoogle(borrarTodo) {
+    if (borrarTodo && !window.confirm('¿Borrar tu cuenta del copiloto? Se eliminan del servidor tu autorización y tus reuniones guardadas. Tu hoja de Google Sheets NO se borra (es tuya).')) return;
+    var token = G.token;
+    pintarGoogle(borrarTodo ? 'Borrando tu cuenta…' : 'Desconectando…');
+    try {
+      await fetch(urlDesconectar(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appToken: token, borrarTodo: !!borrarTodo })
+      });
+    } catch (e) { /* si falla la red, igual se olvida en este equipo */ }
+    olvidarCuentaLocal();
+    pintarGoogle(borrarTodo
+      ? 'Cuenta borrada del copiloto. Para quitar también el permiso en Google: myaccount.google.com/permissions'
+      : 'Desconectado en este equipo. Tu hoja sigue en tu Google Drive.');
+  }
+
+  function pintarGoogle(msg) {
+    if (typeof msg === 'string') G.msg = msg;
+    var btn = $('btnGoogle'), estado = $('googleEstado');
+    var conectado = !!(G.token && G.email);
+    var enlace = G.hojaId ? 'https://docs.google.com/spreadsheets/d/' + G.hojaId + '/edit' : '';
+
+    btn.classList.toggle('ok', conectado);
+    btn.textContent = conectado ? '✓ ' + G.email.split('@')[0] : 'Conectar Google';
+    $('btnGoogleConectar').textContent = conectado ? 'Conectar otra cuenta' : 'Conectar con Google';
+    $('btnGoogleDesconectar').hidden = !conectado;
+    $('btnGoogleBorrar').hidden = !conectado;
+
+    estado.replaceChildren();
+    estado.appendChild(document.createTextNode(conectado
+      ? 'Cada análisis se guarda solo en tu cuenta ' + G.email + '. '
+      : 'No conectado: tu historial no se guarda en Sheets. '));
+    if (conectado && enlace) {
+      var a = document.createElement('a'); a.href = enlace; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Abrir mi hoja';
+      estado.appendChild(a);
+    }
+    if (G.msg) estado.appendChild(document.createTextNode(' · ' + G.msg));
+
+    // Recuadro grande solo mientras no haya conectado (y no haya tocado "Ahora no")
+    $('avisoGoogle').hidden = conectado || G.conectando;
+    $('franjaGoogle').hidden = true;   // ya no hace falta reconectar
+    // El motivo de un intento fallido se muestra a la vista, dentro del recuadro
+    var avisoMsg = $('avisoGoogleMsg');
+    avisoMsg.textContent = (!conectado && G.msg) ? G.msg : '';
+    avisoMsg.hidden = !(!conectado && G.msg);
+    if (!conectado && G.msg && !G.conectando) $('avisoGoogle').hidden = false;
+  }
+
+  $('btnGoogle').addEventListener('click', function () {
+    if (G.token && G.hojaId) window.open('https://docs.google.com/spreadsheets/d/' + G.hojaId + '/edit', '_blank', 'noopener');
+    else conectarGoogle();
+  });
+  $('btnGoogleConectar').addEventListener('click', conectarGoogle);
+  $('btnGoogleDesconectar').addEventListener('click', function () { desconectarGoogle(false); });
+  $('btnGoogleBorrar').addEventListener('click', function () { desconectarGoogle(true); });
+  $('btnAvisoConectar').addEventListener('click', conectarGoogle);
+  $('btnAvisoOmitir').addEventListener('click', function () { guardar('google.omitido', '1'); $('avisoGoogle').hidden = true; });
+  // Limpia datos de la version anterior (cola local y conexion de 1 hora)
+  ['google.pendientes', 'google.email'].forEach(function (k) { try { localStorage.removeItem('copiloto.' + k); } catch (e) {} });
+  try { sessionStorage.removeItem('copiloto.google.token'); } catch (e) {}
+  pintarGoogle();
+
+  /* ---------- MI REUNION: la situacion de cada persona (se guarda solo en este equipo y viaja con cada mensaje) ---------- */
+  function perfilReunion() {
+    return {
+      escenario: leer('pf.escenario', ''),
+      objetivo: leer('pf.objetivo', ''),
+      contexto: leer('pf.contexto', ''),
+      enfoque: leer('pf.enfoque', 'descubrimiento')
+    };
+  }
+  function pintarPerfil() {
+    var p = perfilReunion(), listo = !!(p.escenario && p.objetivo);
+    $('pfEstado').textContent = listo ? '✓ El copiloto ya conoce tu situación. Puedes cambiarla cuando quieras.' : 'Completa al menos el tipo de reunión y qué quieres lograr.';
+    $('avisoPerfil').hidden = listo || !(typeof G !== 'undefined' && G.token);
+  }
+  [['pfEscenario', 'pf.escenario'], ['pfObjetivo', 'pf.objetivo'], ['pfContexto', 'pf.contexto'], ['pfEnfoque', 'pf.enfoque']].forEach(function (x) {
+    $(x[0]).value = leer(x[1], x[0] === 'pfEnfoque' ? 'descubrimiento' : '');
+    $(x[0]).addEventListener('change', function () { guardar(x[1], $(x[0]).value.trim()); pintarPerfil(); });
+  });
+  $('btnConfigPerfil').addEventListener('click', function () {
+    $('panelAjustes').open = true;
+    $('bloquePerfil').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(function () { $('pfEscenario').focus(); }, 400);
+  });
+  pintarPerfil();
+
+  /* ---------- TU IA: cada persona usa su propia cuenta (Groq, Gemini, OpenAI o Claude) ----------
+     La clave se guarda solo en este equipo y viaja con cada mensaje a n8n, que la usa y no la guarda. */
+  var IA_INFO = {
+    groq:   { enlace: 'https://console.groq.com/keys', texto: 'console.groq.com/keys', modelo: 'openai/gpt-oss-20b', audio: true },
+    gemini: { enlace: 'https://aistudio.google.com/apikey', texto: 'aistudio.google.com/apikey', modelo: 'gemini-3.5-flash-lite', audio: false },
+    openai: { enlace: 'https://platform.openai.com/api-keys', texto: 'platform.openai.com/api-keys', modelo: 'gpt-4.1-mini', audio: true },
+    claude: { enlace: 'https://platform.claude.com/settings/keys', texto: 'platform.claude.com/settings/keys', modelo: 'claude-haiku-5-5', audio: false }
+  };
+  function configIA() {
+    return {
+      proveedor: leer('ia.proveedor', 'groq'),
+      clave: leer('ia.clave', ''),
+      modelo: leer('ia.modelo', ''),
+      audio: leer('ia.audio', '')
+    };
+  }
+  function pintarIA() {
+    var c = configIA(), info = IA_INFO[c.proveedor] || IA_INFO.groq;
+    $('iaProveedor').value = c.proveedor;
+    $('iaEnlace').href = info.enlace; $('iaEnlace').textContent = info.texto;
+    $('iaModelo').placeholder = 'Recomendado: ' + info.modelo;
+    $('iaAudioCaja').hidden = c.proveedor === 'groq';
+    var est = c.clave ? '✓ Clave guardada en este equipo.' : 'Sin clave: el copiloto no puede analizar todavía.';
+    if (!info.audio) est += ' Este proveedor no transcribe audio: usa subtítulos (o agrega una clave de Groq para el modo audio).';
+    $('iaEstado').textContent = est;
+    $('avisoIA').hidden = !!c.clave || !(typeof G !== 'undefined' && G.token);
+  }
+  $('iaProveedor').addEventListener('change', function () { guardar('ia.proveedor', $('iaProveedor').value); guardar('ia.modelo', ''); $('iaModelo').value = ''; pintarIA(); });
+  $('iaClave').addEventListener('change', function () { guardar('ia.clave', $('iaClave').value.trim()); pintarIA(); });
+  $('iaModelo').addEventListener('change', function () { guardar('ia.modelo', $('iaModelo').value.trim()); });
+  $('iaAudio').addEventListener('change', function () { guardar('ia.audio', $('iaAudio').value.trim()); pintarIA(); });
+  $('btnConfigIA').addEventListener('click', function () {
+    $('panelAjustes').open = true;
+    $('bloqueIA').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(function () { $('iaClave').focus(); }, 400);
+  });
+  (function () { var c = configIA(); $('iaClave').value = c.clave; $('iaModelo').value = c.modelo; $('iaAudio').value = c.audio; })();
+  pintarIA();
+
+  /* ---------- app instalable: escritorio (Chrome/Edge) y celular (Android) ---------- */
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  }
+  var avisoInstalar = null;
+  var btnInstalar = $('btnInstalar');
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    avisoInstalar = e;
+    btnInstalar.hidden = false;
+  });
+  btnInstalar.addEventListener('click', async function () {
+    if (!avisoInstalar) return;
+    avisoInstalar.prompt();
+    try { await avisoInstalar.userChoice; } catch (e) {}
+    avisoInstalar = null;
+    btnInstalar.hidden = true;
+  });
+  window.addEventListener('appinstalled', function () { btnInstalar.hidden = true; });
+
+
+  /* =====================================================================
+     v17: TRANSCRIPCION COMPLETA, PREGUNTALE A TU IA y GUIA DE INICIO
+     ===================================================================== */
+
+  // ---------- Transcripcion completa (de esta reunion, guardada en este equipo) ----------
+  var TX = { lista: [] };
+  function claveTx(id) { return 'tx.' + id; }
+  function cargarTx() {
+    try { TX.lista = JSON.parse(leer(claveTx(sessionId), '[]')) || []; } catch (e) { TX.lista = []; }
+    pintarTx();
+  }
+  function guardarTx() {
+    guardar(claveTx(sessionId), JSON.stringify(TX.lista));
+    var ids = [];
+    try { ids = JSON.parse(leer('tx.ids', '[]')) || []; } catch (e) {}
+    if (ids.indexOf(sessionId) === -1) {
+      ids.push(sessionId);
+      while (ids.length > 5) { try { localStorage.removeItem('copiloto.' + claveTx(ids.shift())); } catch (e) {} }
+      guardar('tx.ids', JSON.stringify(ids));
+    }
+  }
+  function anotarTx(chatInput) {
+    marcarSesion();
+    var nuevas = 0;
+    String(chatInput || '').split(/\n+/).forEach(function (l) {
+      var m = /^\s*(YO|CLIENTE)\s*:\s*([\s\S]+)$/i.exec(l.trim());
+      if (!m || !m[2].trim()) return;
+      TX.lista.push({ h: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }), q: m[1].toUpperCase(), t: m[2].trim(), tr: '' });
+      nuevas++;
+    });
+    if (nuevas) { guardarTx(); pintarTx(); }
+  }
+  function traduccionTx(texto) {
+    var m = /^TRADUCCION \(([^)]+)\):\s*(.+)$/im.exec(String(texto || ''));
+    if (!m) return;
+    for (var i = TX.lista.length - 1; i >= 0; i--) {
+      if (TX.lista[i].q === 'CLIENTE') {
+        if (!TX.lista[i].tr) { TX.lista[i].tr = m[2].trim(); guardarTx(); pintarTx(); }
+        return;
+      }
+    }
+  }
+  function quienTx(q) { return q === 'YO' ? 'Tú' : 'Cliente'; }
+  function textoTx() {
+    return TX.lista.map(function (x) {
+      return '[' + x.h + '] ' + (x.q === 'YO' ? 'YO' : 'CLIENTE') + ': ' + x.t + (x.tr ? ' (en español: ' + x.tr + ')' : '');
+    }).join('\n');
+  }
+  function pintarTx() {
+    var ul = $('txLista');
+    if (!ul) return;
+    ul.replaceChildren();
+    $('txTotal').textContent = TX.lista.length + (TX.lista.length === 1 ? ' línea' : ' líneas');
+    if (!TX.lista.length) {
+      var v = document.createElement('li');
+      v.style.cssText = 'display:block;color:var(--muted);border:0';
+      v.textContent = 'Todavía no hay nada. Cuando empiece la reunión, aquí aparecerá todo lo que se diga.';
+      ul.appendChild(v);
+      return;
+    }
+    TX.lista.forEach(function (x) {
+      var li = document.createElement('li');
+      var h = document.createElement('span'); h.className = 'tx-h'; h.textContent = x.h;
+      var q = document.createElement('span'); q.className = 'tx-q ' + (x.q === 'YO' ? 'yo' : 'cliente'); q.textContent = quienTx(x.q);
+      var t = document.createElement('div'); t.textContent = x.t;
+      if (x.tr) { var tr = document.createElement('div'); tr.className = 'tx-tr'; tr.textContent = '🌐 ' + x.tr; t.appendChild(tr); }
+      li.appendChild(h); li.appendChild(q); li.appendChild(t);
+      ul.appendChild(li);
+    });
+    ul.scrollTop = ul.scrollHeight;
+  }
+  $('txCopiar').addEventListener('click', async function () {
+    var b = $('txCopiar');
+    try { await navigator.clipboard.writeText(textoTx() || ''); b.textContent = '¡Copiado!'; }
+    catch (e) { b.textContent = 'No se pudo copiar'; }
+    setTimeout(function () { b.textContent = 'Copiar todo'; }, 1800);
+  });
+  $('txDescargar').addEventListener('click', function () {
+    var cab = 'Transcripción · ' + sessionId + ' · ' + new Date().toLocaleString('es-PE') + '\n\n';
+    var blob = new Blob([cab + textoTx() + '\n'], { type: 'text/plain;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'transcripcion-' + sessionId + '.txt';
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  });
+  function abrirMiHoja() {
+    if (G.token && G.hojaId) { window.open('https://docs.google.com/spreadsheets/d/' + G.hojaId + '/edit', '_blank', 'noopener'); return true; }
+    abrirGuia(1);
+    return false;
+  }
+  $('txSheets').addEventListener('click', abrirMiHoja);
+
+  // ---------- Accesos grandes de arriba ----------
+  function alternarPanel(panelId, botonId, abrir) {
+    var p = $(panelId), b = $(botonId);
+    var mostrar = typeof abrir === 'boolean' ? abrir : p.hidden;
+    p.hidden = !mostrar;
+    b.setAttribute('aria-expanded', String(mostrar));
+    guardar('panel.' + panelId, mostrar ? '1' : '');
+    if (mostrar) p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return mostrar;
+  }
+  $('atHistorial').addEventListener('click', abrirMiHoja);
+  $('atTranscripcion').addEventListener('click', function () { alternarPanel('panelTx', 'atTranscripcion'); });
+  $('atPreguntar').addEventListener('click', function () {
+    if (alternarPanel('panelIA', 'atPreguntar')) setTimeout(function () { $('pTexto').focus(); }, 350);
+  });
+  if (leer('panel.panelTx', '') === '1') { $('panelTx').hidden = false; $('atTranscripcion').setAttribute('aria-expanded', 'true'); }
+  if (leer('panel.panelIA', '') === '1') { $('panelIA').hidden = false; $('atPreguntar').setAttribute('aria-expanded', 'true'); }
+
+  // ---------- Preguntale a tu IA ----------
+  var PREG = { lista: [], enviando: false };
+  function urlPreguntar() { return urlConectar().replace('/copiloto-conectar', '/copiloto-preguntar'); }
+
+  // Texto con **negritas**, listas y enlaces -> nodos (sin insertar HTML ajeno)
+  function lineaRica(texto, padre) {
+    String(texto).split(/(\*\*[^*]+\*\*|https?:\/\/[^\s)]+)/g).forEach(function (pedazo) {
+      if (!pedazo) return;
+      if (/^\*\*[^*]+\*\*$/.test(pedazo)) { var b = document.createElement('b'); b.textContent = pedazo.slice(2, -2); padre.appendChild(b); }
+      else if (/^https?:\/\//.test(pedazo)) { var a = document.createElement('a'); a.href = pedazo; a.target = '_blank'; a.rel = 'noopener'; a.textContent = pedazo.replace(/^https?:\/\//, '').slice(0, 60); padre.appendChild(a); }
+      else padre.appendChild(document.createTextNode(pedazo));
+    });
+  }
+  function celdasFila(s) { return s.replace(/^\|/, '').replace(/\|$/, '').split('|').map(function (c) { return c.trim(); }); }
+  function textoRico(texto, contenedor, plegarTablas) {
+    var lista = null, tipo = '', tabla = null, cuerpo = null;
+    String(texto).split('\n').forEach(function (l) {
+      var s = l.trim();
+      if (/^\|.*\|$/.test(s)) {
+        lista = null;
+        if (/^\|[\s:|-]+\|$/.test(s)) return;                // la fila de separacion |---|---|
+        var celdas = celdasFila(s);
+        if (!tabla) {
+          var envoltura = document.createElement('div'); envoltura.className = 'tabla-ia';
+          tabla = document.createElement('table'); envoltura.appendChild(tabla);
+          if (plegarTablas) {
+            var det = document.createElement('details'); det.className = 'datos-ia';
+            var sum = document.createElement('summary'); sum.textContent = 'Ver los datos en tabla';
+            det.appendChild(sum); det.appendChild(envoltura); contenedor.appendChild(det);
+          } else contenedor.appendChild(envoltura);
+          var tr0 = document.createElement('tr');
+          celdas.forEach(function (c) { var th = document.createElement('th'); lineaRica(c, th); tr0.appendChild(th); });
+          var thead = document.createElement('thead'); thead.appendChild(tr0); tabla.appendChild(thead);
+          cuerpo = document.createElement('tbody'); tabla.appendChild(cuerpo);
+          return;
+        }
+        var tr = document.createElement('tr');
+        celdas.forEach(function (c) { var td = document.createElement('td'); lineaRica(c, td); tr.appendChild(td); });
+        cuerpo.appendChild(tr);
+        return;
+      }
+      tabla = null;
+      var mv = /^[-*•]\s+(.*)$/.exec(s), mn = /^\d+[.)]\s+(.*)$/.exec(s);
+      if (mv || mn) {
+        var t = mv ? 'ul' : 'ol';
+        if (!lista || tipo !== t) { lista = document.createElement(t); tipo = t; contenedor.appendChild(lista); }
+        var li = document.createElement('li'); lineaRica((mv || mn)[1], li); lista.appendChild(li);
+        return;
+      }
+      lista = null;
+      if (!s) return;
+      var p = document.createElement('p');
+      var mh = /^#{1,4}\s+(.*)$/.exec(s);
+      if (mh) { var b = document.createElement('b'); lineaRica(mh[1], b); p.appendChild(b); }
+      else lineaRica(s, p);
+      contenedor.appendChild(p);
+    });
+  }
+
+  // Grafico de barras o lineas en SVG, a partir del bloque ```grafico {...}``` que manda la IA
+  var COLORES = ['var(--cliente)', 'var(--yo)', 'var(--alerta)'];
+  function numeroCorto(v) {
+    var a = Math.abs(v);
+    if (a >= 1e6) return (v / 1e6).toLocaleString('es-PE', { maximumFractionDigits: 1 }) + ' M';
+    if (a >= 1e4) return (v / 1e3).toLocaleString('es-PE', { maximumFractionDigits: 1 }) + ' mil';
+    return v.toLocaleString('es-PE', { maximumFractionDigits: 2 });
+  }
+  function svgEl(nombre, attrs, texto) {
+    var e = document.createElementNS('http://www.w3.org/2000/svg', nombre);
+    Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+    if (texto !== undefined) e.textContent = texto;
+    return e;
+  }
+  function dibujarGrafico(g) {
+    if (!g || (g.tipo !== 'barras' && g.tipo !== 'lineas')) return null;
+    var etiquetas = (Array.isArray(g.etiquetas) ? g.etiquetas : []).slice(0, 12).map(String);
+    var series = (Array.isArray(g.series) ? g.series : []).slice(0, 3).map(function (s) {
+      return { nombre: String((s && s.nombre) || ''), valores: etiquetas.map(function (_, i) { var v = Number(s && s.valores && s.valores[i]); return isFinite(v) ? v : null; }) };
+    }).filter(function (s) { return s.valores.some(function (v) { return v !== null; }); });
+    if (!etiquetas.length || !series.length) return null;
+    var todos = []; series.forEach(function (s) { s.valores.forEach(function (v) { if (v !== null) todos.push(v); }); });
+    var conCero = g.tipo === 'barras' ? [0] : [];
+    var max = Math.max.apply(null, todos.concat(conCero)), min = Math.min.apply(null, todos.concat(conCero));
+    if (g.tipo === 'lineas') { var hol = (max - min) * 0.15 || Math.abs(max) * 0.05 || 1; max += hol; min -= hol; }
+    if (max === min) max = min + 1;
+    var paso = Math.pow(10, Math.floor(Math.log10((max - min) / 4))), tope = max, piso = min;
+    [1, 2, 2.5, 5, 10].some(function (f) { var p = paso * f; if ((Math.ceil(max / p) - Math.floor(min / p)) <= 5) { paso = p; return true; } return false; });
+    tope = Math.ceil(max / paso) * paso; piso = Math.floor(min / paso) * paso;
+    var W = 640, H = 250, m = { l: 60, r: 16, t: 34, b: etiquetas.length > 6 ? 70 : 40 };
+    var ancho = W - m.l - m.r, alto = H - m.t - m.b;
+    var y = function (v) { return m.t + alto - (v - piso) / (tope - piso) * alto; };
+    var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': String(g.titulo || 'Gráfico') });
+    svg.appendChild(svgEl('text', { x: m.l, y: 22, 'font-size': 15, 'font-weight': 700, fill: 'currentColor' }, String(g.titulo || '')));
+    for (var v = piso; v <= tope + paso / 2; v += paso) {
+      svg.appendChild(svgEl('line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: 'var(--line)', 'stroke-width': v === 0 ? 1.5 : 1 }));
+      svg.appendChild(svgEl('text', { x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: 'var(--muted)' }, numeroCorto(v)));
+    }
+    if (g.unidad) svg.appendChild(svgEl('text', { x: 8, y: m.t - 10, 'font-size': 11, fill: 'var(--muted)' }, String(g.unidad).slice(0, 20)));
+    var banda = ancho / etiquetas.length;
+    etiquetas.forEach(function (et, i) {
+      var cx = m.l + banda * i + banda / 2, txt = et.length > 16 ? et.slice(0, 15) + '…' : et;
+      var attrs = { x: cx, y: H - m.b + 18, 'text-anchor': 'middle', 'font-size': 11, fill: 'var(--muted)' };
+      if (etiquetas.length > 6) { attrs['text-anchor'] = 'end'; attrs.transform = 'rotate(-35 ' + cx + ' ' + (H - m.b + 14) + ')'; attrs.y = H - m.b + 14; }
+      svg.appendChild(svgEl('text', attrs, txt));
+    });
+    series.forEach(function (s, si) {
+      var color = COLORES[si % COLORES.length];
+      if (g.tipo === 'barras') {
+        var hueco = banda * 0.18, anchoBarra = (banda - hueco * 2) / series.length;
+        s.valores.forEach(function (val, i) {
+          if (val === null) return;
+          var x = m.l + banda * i + hueco + anchoBarra * si, y0 = y(Math.max(0, piso)), y1 = y(val);
+          var r = svgEl('rect', { x: x + 1, y: Math.min(y0, y1), width: Math.max(1, anchoBarra - 2), height: Math.max(1, Math.abs(y0 - y1)), rx: 3, style: 'fill:' + color });
+          r.appendChild(svgEl('title', {}, (s.nombre ? s.nombre + ' · ' : '') + etiquetas[i] + ': ' + val.toLocaleString('es-PE') + (g.unidad ? ' ' + g.unidad : '')));
+          svg.appendChild(r);
+          if (etiquetas.length * series.length <= 12) svg.appendChild(svgEl('text', { x: x + anchoBarra / 2, y: Math.min(y0, y1) - 5, 'text-anchor': 'middle', 'font-size': 11, fill: 'currentColor' }, numeroCorto(val)));
+        });
+      } else {
+        var pts = [];
+        s.valores.forEach(function (val, i) { if (val !== null) pts.push([m.l + banda * i + banda / 2, y(val), val, i]); });
+        svg.appendChild(svgEl('polyline', { points: pts.map(function (p) { return p[0] + ',' + p[1]; }).join(' '), fill: 'none', style: 'stroke:' + color, 'stroke-width': 2.5, 'stroke-linejoin': 'round' }));
+        pts.forEach(function (p) {
+          var c = svgEl('circle', { cx: p[0], cy: p[1], r: 4, style: 'fill:' + color });
+          c.appendChild(svgEl('title', {}, (s.nombre ? s.nombre + ' · ' : '') + etiquetas[p[3]] + ': ' + p[2].toLocaleString('es-PE') + (g.unidad ? ' ' + g.unidad : '')));
+          svg.appendChild(c);
+        });
+      }
+    });
+    var caja = document.createElement('div'); caja.className = 'grafico'; caja.appendChild(svg);
+    if (series.length > 1 || series[0].nombre) {
+      var ley = document.createElement('div'); ley.className = 'leyenda';
+      series.forEach(function (s, si) { var sp = document.createElement('span'); var i = document.createElement('i'); i.style.background = COLORES[si % COLORES.length]; sp.appendChild(i); sp.appendChild(document.createTextNode(s.nombre || 'Serie ' + (si + 1))); ley.appendChild(sp); });
+      caja.appendChild(ley);
+    }
+    return caja;
+  }
+  function pintarRespuestaIA(contenedor, texto) {
+    var hayGrafico = /```grafico/.test(String(texto));
+    String(texto).split(/```grafico\s*([\s\S]*?)```/).forEach(function (parte, i) {
+      if (i % 2 === 1) {
+        var g = null; try { g = JSON.parse(parte.trim()); } catch (e) {}
+        var dib = dibujarGrafico(g);
+        if (dib) contenedor.appendChild(dib);
+      } else if (parte.trim()) textoRico(parte, contenedor, hayGrafico);
+    });
+  }
+  function pintarPreguntas() {
+    var ul = $('pLista');
+    ul.replaceChildren();
+    if (!PREG.lista.length) {
+      var v = document.createElement('li'); v.className = 'burbuja ia';
+      v.textContent = '👋 Hola. Pregúntame lo que quieras sobre tu reunión: un resumen, qué responder, o algo que deba buscar en internet.';
+      ul.appendChild(v);
+    }
+    PREG.lista.forEach(function (msg) {
+      var li = document.createElement('li');
+      li.className = 'burbuja ' + (msg.rol === 'yo' ? 'yo' : 'ia') + (msg.error ? ' error' : '');
+      if (msg.pensando) { li.classList.add('pensando'); li.textContent = msg.buscar ? 'Pensando y buscando en internet…' : 'Pensando…'; }
+      else if (msg.rol === 'yo' || msg.error) li.textContent = msg.texto;
+      else { pintarRespuestaIA(li, msg.texto); if (/```grafico/.test(String(msg.texto))) li.classList.add('ancha'); }
+      if (msg.aviso) { var av = document.createElement('div'); av.className = 'aviso-ia' + (/^Busqué/.test(msg.aviso) ? ' ok' : ''); av.textContent = msg.aviso; li.appendChild(av); }
+      if (msg.necesita === 'groq') li.appendChild(cajaGroq(msg));
+      if (msg.fuentes && msg.fuentes.length) {
+        var f = document.createElement('div'); f.className = 'fuentes'; f.appendChild(document.createTextNode('Fuentes: '));
+        // Solo el nombre del sitio (dolar.pe · gestion.pe); el título completo aparece al pasar el mouse
+        var vistos = {};
+        msg.fuentes.forEach(function (x) {
+          var sitio = '';
+          try { sitio = new URL(x.url).hostname.replace(/^www\./, ''); } catch (e) { return; }
+          if (vistos[sitio]) return; vistos[sitio] = 1;
+          if (f.childNodes.length > 1) f.appendChild(document.createTextNode(' · '));
+          var a = document.createElement('a'); a.href = x.url; a.target = '_blank'; a.rel = 'noopener';
+          a.textContent = sitio; a.title = x.titulo || x.url; f.appendChild(a);
+        });
+        li.appendChild(f);
+      }
+      ul.appendChild(li);
+    });
+    // Respuesta larga: mostrar su comienzo para leerla de arriba abajo
+    var ultima = ul.lastElementChild;
+    if (ultima && ultima.classList.contains('ia') && ultima.offsetHeight > ul.clientHeight * 0.6) ul.scrollTop = ultima.offsetTop - 8;
+    else ul.scrollTop = ul.scrollHeight;
+  }
+  // Mini-formulario dentro de la respuesta: sacar la clave de Groq, pegarla y volver a preguntar
+  function cajaGroq(msg) {
+    var caja = document.createElement('div'); caja.className = 'caja-groq';
+    var t = document.createElement('p'); t.className = 'caja-groq-titulo'; t.textContent = '🔎 Activa la búsqueda en internet (gratis, 2 minutos)'; caja.appendChild(t);
+    var p1 = document.createElement('p');
+    p1.innerHTML = '<b>1.</b> Saca tu clave gratis de Groq: toca «Create API Key», ponle un nombre, deja «No expiration» y copia la clave (empieza con <code>gsk_</code>).';
+    caja.appendChild(p1);
+    var ir = document.createElement('a'); ir.className = 'boton-suave caja-groq-ir'; ir.href = 'https://console.groq.com/keys'; ir.target = '_blank'; ir.rel = 'noopener'; ir.textContent = 'Sacar mi clave de Groq ↗';
+    caja.appendChild(ir);
+    var p2 = document.createElement('p'); p2.innerHTML = '<b>2.</b> Pégala aquí:'; caja.appendChild(p2);
+    var fila = document.createElement('div'); fila.className = 'caja-groq-fila';
+    var inp = document.createElement('input'); inp.type = 'password'; inp.placeholder = 'gsk_…'; inp.autocomplete = 'off'; inp.setAttribute('aria-label', 'Clave de Groq');
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'boton-grande'; b.textContent = 'Guardar y volver a preguntar';
+    fila.appendChild(inp); fila.appendChild(b); caja.appendChild(fila);
+    var est = document.createElement('p'); est.className = 'caja-groq-estado'; caja.appendChild(est);
+    b.addEventListener('click', function () {
+      var v = inp.value.trim();
+      if (!/^gsk_/.test(v) || v.length < 20 || /\s/.test(v)) { est.textContent = '⚠️ Esa no parece una clave de Groq: debe empezar con gsk_. Cópiala otra vez con el botón de copiar.'; return; }
+      guardar('ia.audio', v);
+      if ($('iaAudio')) $('iaAudio').value = v;
+      if ($('gAudio')) $('gAudio').value = v;
+      pintarIA();
+      msg.necesita = '';
+      var pregunta = msg.pregunta;
+      PREG.lista.splice(PREG.lista.indexOf(msg), 1);
+      var i = PREG.lista.length - 1;
+      if (i >= 0 && PREG.lista[i].rol === 'yo' && PREG.lista[i].texto === pregunta) PREG.lista.splice(i, 1);
+      $('pBuscar').checked = true;
+      preguntar(pregunta);
+    });
+    return caja;
+  }
+  async function preguntar(texto) {
+    texto = String(texto || '').trim();
+    if (!texto || PREG.enviando) return;
+    var c = configIA();
+    if (!(G.token && G.email)) { abrirGuia(1); return; }
+    if (!c.clave) { abrirGuia(2); return; }
+    var buscar = $('pBuscar').checked;
+    var historial = PREG.lista.filter(function (m) { return !m.error && !m.pensando; }).slice(-6)
+      .map(function (m) { return { rol: m.rol, texto: m.texto }; });
+    PREG.lista.push({ rol: 'yo', texto: texto });
+    var espera = { rol: 'ia', pensando: true, buscar: buscar };
+    PREG.lista.push(espera);
+    PREG.enviando = true; $('pEnviar').disabled = true; $('pTexto').value = '';
+    pintarPreguntas();
+    try {
+      var res = await fetch(urlPreguntar(), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: sessionId, appToken: tokenEquipo(), ia: { proveedor: c.proveedor, clave: c.clave, modelo: c.modelo, claveGroq: /^gsk_/.test(c.audio || '') ? c.audio : '' },
+          perfil: perfilReunion(), pregunta: texto, buscar: buscar, transcripcion: textoTx(), historial: historial, zona: (function () { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { return ''; } })() })
+      });
+      var j = {}; try { j = await res.json(); } catch (e) {}
+      PREG.lista.splice(PREG.lista.indexOf(espera), 1);
+      if (!res.ok || !j.ok) PREG.lista.push({ rol: 'ia', error: true, texto: j.error || ('No se pudo preguntar (el servidor respondió ' + res.status + ').') });
+      else PREG.lista.push({ rol: 'ia', texto: j.respuesta, fuentes: j.fuentes || [], aviso: j.aviso || '', necesita: j.necesita || '', pregunta: texto });
+    } catch (e) {
+      PREG.lista.splice(PREG.lista.indexOf(espera), 1);
+      PREG.lista.push({ rol: 'ia', error: true, texto: 'No llegó al servidor. Revisa tu internet y vuelve a intentar.' });
+    }
+    PREG.enviando = false; $('pEnviar').disabled = false;
+    pintarPreguntas();
+  }
+  $('pForm').addEventListener('submit', function (e) { e.preventDefault(); preguntar($('pTexto').value); });
+  $('pTexto').addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); preguntar($('pTexto').value); } });
+  Array.prototype.forEach.call($('pSugeridas').querySelectorAll('button'), function (b) {
+    b.addEventListener('click', function () { preguntar(b.textContent); });
+  });
+  $('pLimpiar').addEventListener('click', function () { PREG.lista = []; pintarPreguntas(); });
+  pintarPreguntas();
+
+  // ---------- Guia de inicio: 3 pasos, uno por pantalla ----------
+  var GUIA = { paso: 1, avanzar: null };
+  var INFO_CLAVE = {
+    gemini: { url: 'https://aistudio.google.com/apikey', prefijo: /^AIza/, ayuda: 'En la página de Google toca «Create API key» y copia la clave (empieza con AIza…).' },
+    groq: { url: 'https://console.groq.com/keys', prefijo: /^gsk_/, ayuda: 'En Groq toca «Create API Key», ponle un nombre, deja «No expiration» y copia la clave (empieza con gsk_…).' },
+    openai: { url: 'https://platform.openai.com/api-keys', prefijo: /^sk-/, ayuda: 'En OpenAI crea una clave nueva y cópiala (empieza con sk-…). Es de pago.' },
+    claude: { url: 'https://platform.claude.com/settings/keys', prefijo: /^sk-ant-/, ayuda: 'En Claude crea una clave y cópiala (empieza con sk-ant-…). Es de pago.' }
+  };
+  var EJEMPLOS = {
+    'Venta': 'Ej.: que contrate mi plan mensual', 'Entrevista de trabajo': 'Ej.: pasar a la siguiente etapa',
+    'Negociación': 'Ej.: cerrar el acuerdo a buen precio', 'Clase o estudio': 'Ej.: entender el tema y resolver mis dudas',
+    'Reunión de equipo': 'Ej.: acordar tareas, responsables y fechas'
+  };
+  function estadoConfig() {
+    var c = configIA(), p = perfilReunion();
+    return { google: !!(G.token && G.email), ia: !!c.clave, reunion: !!(p.escenario && p.objetivo) };
+  }
+  function primerPasoPendiente() { var e = estadoConfig(); return !e.google ? 1 : !e.ia ? 2 : !e.reunion ? 3 : 4; }
+  function pasoListo(n) { var e = estadoConfig(); return n === 1 ? e.google : n === 2 ? e.ia : n === 3 ? e.reunion : true; }
+  function abrirGuia(paso) {
+    GUIA.paso = paso || primerPasoPendiente();
+    $('guia').hidden = false;
+    $('avisoGuia').hidden = true;
+    document.body.classList.add('con-guia');
+    pintarGuia();
+    setTimeout(function () { var b = $('guia').querySelector('[data-paso="' + GUIA.paso + '"] button, [data-paso="' + GUIA.paso + '"] input'); if (b) b.focus(); }, 50);
+  }
+  function cerrarGuia() {
+    $('guia').hidden = true;
+    document.body.classList.remove('con-guia');
+    guardar('guia.vista', '1');
+    pintarAvisoGuia();
+  }
+  function pintarAvisoGuia() {
+    var e = estadoConfig(), faltan = [!e.google && 'conectar Google', !e.ia && 'tu IA', !e.reunion && 'tu reunión'].filter(Boolean);
+    $('avisoGuia').hidden = !faltan.length || !$('guia').hidden;
+    $('avisoGuiaTxt').replaceChildren();
+    var b = document.createElement('b'); b.textContent = 'Te falta poco para usar el copiloto. ';
+    $('avisoGuiaTxt').appendChild(b);
+    $('avisoGuiaTxt').appendChild(document.createTextNode('Pendiente: ' + faltan.join(', ') + '.'));
+    // Los avisos antiguos quedan reemplazados por la guia
+    ['avisoGoogle', 'avisoPerfil', 'avisoIA'].forEach(function (id) { $(id).hidden = true; });
+  }
+  function pintarGuia() {
+    var n = GUIA.paso, e = estadoConfig();
+    Array.prototype.forEach.call($('guia').querySelectorAll('[data-paso]'), function (d) { d.hidden = Number(d.getAttribute('data-paso')) !== n; });
+    Array.prototype.forEach.call($('guia').querySelectorAll('.guia-puntos span'), function (s, i) {
+      s.className = (i + 1 === n) ? 'actual' : (pasoListo(i + 1) && i + 1 < 4 ? 'hecho' : (i + 1 < n ? 'hecho' : ''));
+    });
+    // Paso 1
+    $('gConectar').textContent = e.google ? '✓ Conectado como ' + G.email : (G.conectando ? 'Abriendo Google…' : 'Conectar con Google');
+    $('gEstado1').textContent = e.google ? '¡Listo! Toca «Siguiente».' : (G.msg || '');
+    $('gEstado1').className = 'hint' + (e.google ? ' ok' : (G.msg && !G.conectando ? ' mal' : ''));
+    // Paso 2
+    var c = configIA();
+    Array.prototype.forEach.call($('guia').querySelectorAll('.opcion-ia'), function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-prov') === c.proveedor)); });
+    if (document.activeElement !== $('gClave')) $('gClave').value = c.clave;
+    if (document.activeElement !== $('gAudio')) $('gAudio').value = c.audio;
+    $('gAudioCaja').hidden = c.proveedor === 'groq' || c.proveedor === 'openai';
+    $('gSacarClave').textContent = c.proveedor === 'gemini' || c.proveedor === 'groq' ? 'Sacar mi clave gratis' : 'Sacar mi clave';
+    // Paso 3
+    var p = perfilReunion(), conocido = !!EJEMPLOS[p.escenario];
+    Array.prototype.forEach.call($('gChips').querySelectorAll('button'), function (b) {
+      var otra = b.getAttribute('data-otra') === '1';
+      b.setAttribute('aria-pressed', String(otra ? (!!p.escenario && !conocido) || GUIA.otra === true : b.textContent === p.escenario));
+    });
+    $('gOtraCaja').hidden = !((p.escenario && !conocido) || GUIA.otra === true);
+    if (document.activeElement !== $('gOtra') && p.escenario && !conocido) $('gOtra').value = p.escenario;
+    if (document.activeElement !== $('gObjetivo')) $('gObjetivo').value = p.objetivo;
+    if (document.activeElement !== $('gContexto')) $('gContexto').value = p.contexto;
+    $('gObjetivo').placeholder = EJEMPLOS[p.escenario] || 'Ej.: lo que esperas que pase al final de la reunión';
+    $('gEstado3').textContent = e.reunion ? '✓ Guardado.' : 'Elige el tipo de reunión y escribe qué quieres lograr.';
+    $('gEstado3').className = 'hint' + (e.reunion ? ' ok' : '');
+    // Pie
+    $('gAtras').hidden = n === 1;
+    $('gSiguiente').textContent = n === 4 ? 'Empezar a usar el copiloto' : (n === 3 ? 'Terminar' : 'Siguiente');
+    $('gSiguiente').disabled = !pasoListo(n);
+    $('gSaltar').textContent = n === 4 ? '' : 'Cerrar la guía (la terminas después)';
+    $('gExtCaja').hidden = !!subs.extension; $('gExtOk').hidden = !subs.extension;
+  }
+  // Paso 1
+  $('gConectar').addEventListener('click', function () {
+    if (estadoConfig().google) return;
+    GUIA.avanzar = 1;
+    conectarGoogle();
+    pintarGuia();
+  });
+  // Paso 2
+  function pintarEstadoClave(msg, clase) { $('gEstado2').textContent = msg || ''; $('gEstado2').className = 'hint' + (clase ? ' ' + clase : ''); }
+  Array.prototype.forEach.call($('guia').querySelectorAll('.opcion-ia'), function (b) {
+    b.addEventListener('click', function () {
+      guardar('ia.proveedor', b.getAttribute('data-prov')); guardar('ia.modelo', ''); $('iaModelo').value = '';
+      pintarIA(); pintarGuia();
+      pintarEstadoClave(INFO_CLAVE[b.getAttribute('data-prov')].ayuda);
+    });
+  });
+  $('gSacarClave').addEventListener('click', function () {
+    var info = INFO_CLAVE[configIA().proveedor] || INFO_CLAVE.gemini;
+    window.open(info.url, '_blank', 'noopener');
+    pintarEstadoClave(info.ayuda + ' Luego vuelve a esta pestaña y pégala abajo.');
+  });
+  function guardarClaveGuia() {
+    var v = $('gClave').value.trim(), c = configIA(), info = INFO_CLAVE[c.proveedor] || INFO_CLAVE.gemini;
+    guardar('ia.clave', v); $('iaClave').value = v;
+    var otro = Object.keys(INFO_CLAVE).filter(function (k) { return k !== c.proveedor && INFO_CLAVE[k].prefijo.test(v) && !(k === 'openai' && c.proveedor === 'claude'); })[0];
+    if (!v) pintarEstadoClave('');
+    else if (otro) pintarEstadoClave('⚠️ Esa clave parece de ' + ({ gemini: 'Gemini', groq: 'Groq', openai: 'OpenAI', claude: 'Claude' }[otro]) + '. Elige ese proveedor arriba o pega la clave correcta.', 'mal');
+    else if (v.length < 20 || /\s/.test(v)) pintarEstadoClave('⚠️ La clave parece incompleta o tiene espacios. Cópiala otra vez con el botón de copiar.', 'mal');
+    else if (!info.prefijo.test(v)) pintarEstadoClave('Clave guardada en este equipo. Toca «Probar mi IA» para comprobar que funciona.');
+    else pintarEstadoClave('✓ Clave guardada en este equipo. Si quieres, tócale «Probar mi IA».', 'ok');
+    pintarIA(); pintarGuia();
+  }
+  $('gClave').addEventListener('input', guardarClaveGuia);
+  $('gAudio').addEventListener('input', function () { guardar('ia.audio', $('gAudio').value.trim()); $('iaAudio').value = $('gAudio').value.trim(); pintarIA(); });
+  $('gProbar').addEventListener('click', async function () {
+    var c = configIA();
+    if (!c.clave) { pintarEstadoClave('Primero pega tu clave.', 'mal'); return; }
+    if (!(G.token && G.email)) { pintarEstadoClave('Primero conecta tu Google (paso 1).', 'mal'); return; }
+    $('gProbar').disabled = true; pintarEstadoClave('Probando tu IA…');
+    try {
+      var res = await fetch(urlPreguntar(), { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: 'prueba-' + sessionId, appToken: tokenEquipo(), ia: { proveedor: c.proveedor, clave: c.clave, modelo: c.modelo },
+          pregunta: 'Responde solo con la palabra: listo', buscar: false }) });
+      var j = {}; try { j = await res.json(); } catch (e) {}
+      if (j.ok) pintarEstadoClave('✓ ¡Tu IA funciona! Toca «Siguiente».', 'ok');
+      else pintarEstadoClave('✗ ' + (j.error || 'No respondió.'), 'mal');
+    } catch (e) { pintarEstadoClave('✗ No llegó al servidor. Revisa tu internet.', 'mal'); }
+    $('gProbar').disabled = false;
+  });
+  // Paso 3
+  function guardarPerfil(campo, valor, idAjustes) {
+    guardar('pf.' + campo, String(valor || '').trim());
+    if (idAjustes) $(idAjustes).value = String(valor || '').trim();
+    pintarPerfil(); pintarGuia(); pintarAvisoGuia();
+  }
+  Array.prototype.forEach.call($('gChips').querySelectorAll('button'), function (b) {
+    b.addEventListener('click', function () {
+      if (b.getAttribute('data-otra') === '1') { GUIA.otra = true; guardarPerfil('escenario', $('gOtra').value, 'pfEscenario'); setTimeout(function () { $('gOtra').focus(); }, 30); return; }
+      GUIA.otra = false;
+      guardarPerfil('escenario', b.textContent, 'pfEscenario');
+      $('gObjetivo').focus();
+    });
+  });
+  $('gOtra').addEventListener('input', function () { guardarPerfil('escenario', $('gOtra').value, 'pfEscenario'); });
+  $('gObjetivo').addEventListener('input', function () { guardarPerfil('objetivo', $('gObjetivo').value, 'pfObjetivo'); });
+  $('gContexto').addEventListener('input', function () { guardarPerfil('contexto', $('gContexto').value, 'pfContexto'); });
+  // Pie
+  $('gAtras').addEventListener('click', function () { GUIA.paso = Math.max(1, GUIA.paso - 1); pintarGuia(); });
+  $('gSiguiente').addEventListener('click', function () {
+    if (GUIA.paso >= 4) { cerrarGuia(); $('btnEmpezar').focus(); return; }
+    GUIA.paso++; pintarGuia();
+  });
+  $('gSaltar').addEventListener('click', cerrarGuia);
+  $('guia').addEventListener('keydown', function (e) { if (e.key === 'Escape') cerrarGuia(); });
+  $('btnGuia').addEventListener('click', function () { abrirGuia(); });
+  $('btnAvisoGuia').addEventListener('click', function () { abrirGuia(); });
+
+  // Cada vez que cambia la cuenta, la IA o el perfil, se actualizan la guia y el aviso
+  var pintarGoogleOriginal = pintarGoogle;
+  pintarGoogle = function (msg) {
+    pintarGoogleOriginal(msg);
+    if (GUIA.avanzar === 1 && estadoConfig().google && !$('guia').hidden) { GUIA.avanzar = null; setTimeout(function () { if (GUIA.paso === 1) { GUIA.paso = 2; pintarGuia(); } }, 900); }
+    if (!$('guia').hidden) pintarGuia();
+    pintarAvisoGuia();
+  };
+  var pintarIAOriginal = pintarIA;
+  pintarIA = function () { pintarIAOriginal(); pintarAvisoGuia(); };
+  var pintarPerfilOriginal = pintarPerfil;
+  pintarPerfil = function () { pintarPerfilOriginal(); pintarAvisoGuia(); };
+
+  cargarTx();
+  if (sesionRetomada && TX.lista.length) {
+    var sepR = document.createElement('li');
+    sepR.className = 'separador';
+    sepR.appendChild(document.createTextNode('Sigues en la misma reunión (' + TX.lista.length + (TX.lista.length === 1 ? ' línea' : ' líneas') + ' en la transcripción) · '));
+    var bN = document.createElement('button');
+    bN.type = 'button'; bN.className = 'enlace'; bN.textContent = 'empezar una nueva';
+    bN.addEventListener('click', function () { el.btnNueva.click(); sepR.remove(); });
+    sepR.appendChild(bN);
+    el.turnos.appendChild(sepR);
+  }
+  pintarAvisoGuia();
+  // Primera vez: la guia se abre sola si falta algo
+  if (primerPasoPendiente() < 4 && leer('guia.vista', '') !== '1') abrirGuia();
+
+  window.__copiloto = { enviarPendientes: enviarPendientes, abrirGuia: abrirGuia };
+})();
+</script>
+</body>
+</html>

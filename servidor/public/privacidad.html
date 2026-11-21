@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Política de privacidad · Copiloto de Reuniones</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0e1316; color: #e8eef1; font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 40px 20px 60px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  h2 { font-size: 1.1rem; margin: 28px 0 8px; color: #5eead4; }
+  p, li { color: #c9d3d8; }
+  .fecha { color: #8c9ba5; font-size: .9rem; margin: 0 0 24px; }
+  a { color: #5eead4; }
+  code { background: #161d22; padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Política de privacidad</h1>
+  <p class="fecha">Copiloto de Reuniones · Última actualización: 20 de noviembre de 2026 (v3)</p>
+
+  <p>Copiloto de Reuniones es una herramienta en fase de prueba que escucha una reunión en línea, la transcribe y sugiere en tiempo real qué responder o preguntar. Esta página explica qué datos usa, para qué y cómo puedes eliminarlos.</p>
+
+  <h2>1. Datos que usamos</h2>
+  <ul>
+    <li><b>Tu cuenta de Google:</b> solo tu dirección de correo, para identificarte y asociar tu historial a tu cuenta.</li>
+    <li><b>Contenido de la reunión:</b> el audio o los subtítulos de la reunión que tú decides conectar, y el texto transcrito.</li>
+    <li><b>Análisis del copiloto:</b> las sugerencias, alertas y recordatorios que genera.</li>
+    <li><b>Preguntas a tu IA:</b> lo que le preguntas en «Pregúntale a tu IA» y sus respuestas. Si activas «Buscar en internet», tu proveedor de IA hace la búsqueda con su propio buscador.</li>
+  </ul>
+
+  <h2>2. Permiso sobre Google Drive</h2>
+  <p>La app solicita el permiso <code>drive.file</code>. Con él solo puede crear y editar <b>la hoja de cálculo que la propia app crea</b> en tu Google Drive ("Copiloto de reuniones - Historial"). <b>No puede ver, leer ni modificar ningún otro archivo de tu Drive.</b></p>
+
+  <h2>3. Para qué usamos los datos</h2>
+  <ul>
+    <li>Transcribir la reunión y generar sugerencias en tiempo real.</li>
+    <li>Guardar tu historial de análisis, tus preguntas a la IA y la transcripción completa de cada reunión en tu propia hoja de Google Sheets.</li>
+    <li>Mantener el contexto de la reunión en curso mientras la usas.</li>
+  </ul>
+  <p>No vendemos tus datos, no los usamos para publicidad y no los compartimos con terceros salvo los proveedores técnicos indicados abajo, que los procesan solo para prestar el servicio.</p>
+
+  <h2>4. Proveedores que procesan los datos</h2>
+  <ul>
+    <li><b>Oracle Cloud</b>: aloja el servidor del Copiloto (la app y el programa que coordina los análisis). No guarda tus reuniones ni tus claves: las procesa en memoria mientras la reunión está en curso.</li>
+    <li><b>El proveedor de IA que tú eliges</b> (Groq, Google Gemini, OpenAI o Anthropic Claude), <b>con tu propia cuenta y tu propia clave</b>: transcribe, clasifica y genera las sugerencias. Se aplican las condiciones de ese proveedor; por ejemplo, algunos planes gratuitos pueden usar los datos para mejorar sus productos.</li>
+    <li><b>Google Sheets</b>: guarda tu historial y la transcripción completa (pestaña «Transcripción») en tu Drive.</li>
+    <li><b>Supabase</b>: guarda temporalmente el estado de la reunión en curso y, cifrada, la autorización de acceso a tu hoja.</li>
+  </ul>
+
+  <h2>5. Cuánto tiempo se guardan</h2>
+  <ul>
+    <li><b>Tu clave de IA</b> se guarda solo en tu equipo. Viaja con cada mensaje para hacer el análisis y no se almacena en nuestros servidores.</li>
+    <li><b>Tu historial y tus transcripciones</b> quedan en tu Google Drive, bajo tu control. Puedes editarlos o borrarlos cuando quieras. La app también guarda la transcripción de tus últimas 5 reuniones en tu propio equipo, para mostrártela.</li>
+    <li><b>El estado de la reunión</b> en nuestros servidores se usa solo mientras la reunión está activa y se elimina después.</li>
+    <li><b>La autorización de acceso</b> a tu hoja se guarda cifrada hasta que la revoques.</li>
+  </ul>
+
+  <h2>6. Uso de datos de Google</h2>
+  <p>El uso y la transferencia de la información recibida de las APIs de Google cumplen la <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Política de Datos del Usuario de los Servicios de API de Google</a>, incluidos los requisitos de uso limitado.</p>
+
+  <h2>7. Tus responsabilidades</h2>
+  <p>Si usas el copiloto en una reunión con otras personas, debes informarles de que la conversación se transcribe y analiza con inteligencia artificial, y respetar las leyes de tu país sobre grabación de conversaciones.</p>
+
+  <h2>8. Cómo revocar el acceso y borrar tus datos</h2>
+  <ul>
+    <li>Revoca el acceso de la app en <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">myaccount.google.com/permissions</a>.</li>
+    <li>Borra la hoja "Copiloto de reuniones - Historial" de tu Google Drive.</li>
+    <li>Para que eliminemos cualquier dato asociado a tu cuenta, escríbenos al correo de contacto.</li>
+  </ul>
+
+  <h2 id="extension">9. Extensión «Copiloto de Reuniones» para Chrome</h2>
+  <p>La extensión es opcional. Sirve para que el copiloto sepa quién habla en la reunión.</p>
+  <ul>
+    <li><b>Qué lee:</b> solo los subtítulos que se muestran en pantalla (el nombre de quien habla y el texto) en las pestañas de Google Meet, Zoom (web) y Microsoft Teams (web), y solo cuando los subtítulos están activados.</li>
+    <li><b>A dónde los envía:</b> únicamente a la pestaña de la app del Copiloto abierta en tu mismo navegador (copiloto.example.com). La extensión no envía nada a ningún servidor por su cuenta: desde la app, los subtítulos siguen el mismo camino descrito en esta política.</li>
+    <li><b>Qué no hace:</b> no lee otras páginas, ni tu historial de navegación, ni tus correos, ni el audio; no guarda datos; no usa los datos para publicidad ni los vende o transfiere a terceros.</li>
+    <li><b>Diagnóstico:</b> el botón «Copiar diagnóstico» de la extensión copia a tu portapapeles el estado técnico y el texto de los subtítulos visibles, solo cuando tú lo tocas, para que puedas enviarlo si algo falla.</li>
+  </ul>
+  <p>Para dejar de usarla, quítala desde <b>chrome://extensions</b>.</p>
+
+  <h2>10. Contacto</h2>
+  <p>Para cualquier consulta sobre privacidad: <a href="mailto:tu-correo@ejemplo.com">tu-correo@ejemplo.com</a></p>
+</main>
+</body>
+</html>

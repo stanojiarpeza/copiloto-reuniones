@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; width: 320px; font: 14px/1.45 system-ui, "Segoe UI", sans-serif; background: #0e1316; color: #e8eef1; }
+  .c { padding: 14px; display: grid; gap: 10px; }
+  h1 { font-size: 15px; margin: 0; }
+  p { margin: 0; color: #8c9ba5; font-size: 13px; }
+  .estado { border: 1px solid #26323a; border-radius: 8px; padding: 10px; }
+  .ok { color: #5eead4; } .aviso { color: #f5b84b; }
+  button { font: inherit; font-weight: 600; color: #07201c; background: #5eead4; border: 0; border-radius: 8px; padding: 9px 12px; cursor: pointer; }
+  button.sec { background: transparent; color: #e8eef1; border: 1px solid #26323a; }
+  a { color: #5eead4; }
+</style>
+</head>
+<body>
+<div class="c">
+  <h1>Copiloto de Reuniones</h1>
+  <div id="estado" class="estado">Revisando esta pestaña…</div>
+  <button id="abrir" type="button">Abrir la app del Copiloto</button>
+  <button id="diag" class="sec" type="button">Copiar diagnóstico de subtítulos</button>
+  <p id="nota">Úsalo si los nombres no aparecen: copia el diagnóstico y pégaselo a quien mantiene la extensión. Incluye el texto de los subtítulos visibles.</p>
+</div>
+<script src="popup.js"></script>
+</body>
+</html>

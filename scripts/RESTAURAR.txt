@@ -1,0 +1,23 @@
+COMO RESTAURAR UN RESPALDO DE SUPABASE (solo si se perdieron los datos)
+=====================================================================
+
+Los respaldos estan en el servidor, en /opt/respaldos (uno por dia, los ultimos 14).
+Para verlos:   sudo ls -lh /opt/respaldos
+
+1) Elige el archivo, por ejemplo supabase-2026-11-20.dump
+
+2) Restaura (pide la contrasena de Supabase sin mostrarla):
+
+   read -s -p "Contrasena de Supabase: " PGPASSWORD; echo; export PGPASSWORD
+   H=$(sudo grep -m1 '^DB_HOST=' /opt/copiloto/.env | cut -d= -f2-)
+   U=$(sudo grep -m1 '^DB_USER=' /opt/copiloto/.env | cut -d= -f2-)
+   sudo docker run --rm -e PGPASSWORD -e PGSSLMODE=verify-full -e PGSSLROOTCERT=/ca.crt \
+     -v /opt/copiloto/supabase-ca.crt:/ca.crt:ro -v /opt/respaldos:/in:ro \
+     postgres:17-alpine pg_restore -h "$H" -p 5432 -U "$U" -d postgres \
+     --clean --if-exists --no-owner --no-privileges /in/supabase-2026-11-20.dump
+   unset PGPASSWORD
+
+3) Reinicia el copiloto:   cd /opt/n8n && sudo docker compose restart copiloto
+
+Nota: --clean borra las tablas actuales y las reemplaza por las del respaldo.
+Hazlo solo si de verdad se perdieron los datos.
