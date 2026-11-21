@@ -1,0 +1,11 @@
+# Secretos: nunca subirlos
+.env
+*.env
+*.crt
+*.key
+*.pem
+# Respaldos de la base de datos
+*.dump
+# Dependencias y temporales
+node_modules/
+.DS_Store
