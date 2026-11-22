@@ -116,4 +116,4 @@ La política completa está en `servidor/public/privacidad.html`. En resumen: el
 
 ## Autor
 
-Desarrollado por Stanoji ([github.com/stanojiarpeza](https://github.com/stanojiarpeza)).
+Desarrollado por Stanoji Peña, ingeniero de telecomunicaciones en Lima, Perú ([github.com/stanojiarpeza](https://github.com/stanojiarpeza)).
